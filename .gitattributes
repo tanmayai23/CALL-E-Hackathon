@@ -1,0 +1,15 @@
+# Normalise line endings across the team's machines.
+# Five people build in parallel on mixed platforms; without this, a Windows
+# checkout rewrites every file it touches and diffs become unreviewable.
+* text=auto eol=lf
+
+# Binary assets must never be normalised.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.woff binary
+*.woff2 binary
+*.mp3 binary
+*.mp4 binary
