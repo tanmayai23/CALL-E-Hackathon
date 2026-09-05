@@ -27,6 +27,7 @@ Signal → Reasoning → Decision → Real Phone Call → Negotiation → Struct
 | **[CLAUDE.md](CLAUDE.md)** | Agent operating instructions — **read first** |
 | [docs/PRD_CALL_E_HACKATHON.md](docs/PRD_CALL_E_HACKATHON.md) | Product Requirements Document — source of truth |
 | [docs/FRONTEND_DESIGN_PLUGINS.md](docs/FRONTEND_DESIGN_PLUGINS.md) | Frontend design system, plugins, motion, 3D |
+| [apps/web/README.md](apps/web/README.md) | Dashboard implementation — setup, architecture, contracts, mock driver |
 | [docs/CALLE_TESTING_LOG.md](docs/CALLE_TESTING_LOG.md) | CALL-E findings + call budget tracker |
 
 ---
@@ -51,8 +52,21 @@ Fastify · LangGraph · PostgreSQL · BullMQ · MQTT · Zod
 
 ---
 
+## Repository
+
+```
+apps/web/          Next.js dashboard — see apps/web/README.md   (Vishal)
+docs/              PRD, frontend design guide, CALL-E testing log
+```
+
+Layers still to land, per [CLAUDE.md §13](CLAUDE.md): `apps/api`, `packages/types`, `packages/calle`, `packages/agent`, `services/`.
+
+---
+
 ## Status
 
-Pre-build. Scope locked, contracts frozen. See [PRD §16](docs/PRD_CALL_E_HACKATHON.md) for the delivery plan.
+**Dashboard:** P0 screens built and running — Incident Command, Live Call Theatre, Simulator, landing. Runs against an in-app mock driver that speaks the frozen SSE contract; pointing it at the backend is a single environment variable. History, roster and asset admin are scoped out and render as visibly disabled.
+
+**Everything else:** pre-build. Scope locked, contracts frozen. See [PRD §16](docs/PRD_CALL_E_HACKATHON.md) for the delivery plan.
 
 **Deadline:** Sep 14, 2026 @ 9:15 PM IST · **Target submission:** Sep 13
