@@ -1,0 +1,10 @@
+{
+  "name": "@sentinel/agent",
+  "version": "0.1.0",
+  "main": "./index.ts",
+  "dependencies": {
+    "@langchain/langgraph": "^1.4.12",
+    "@langchain/core": "^1.1.48",
+    "@call-e/calle": "^0.7.0"
+  }
+}

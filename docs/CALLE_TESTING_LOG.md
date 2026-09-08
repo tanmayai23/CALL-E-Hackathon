@@ -29,29 +29,50 @@ Track every **live** call. Budget policy: [PRD §7.7](PRD_CALL_E_HACKATHON.md).
 
 | Allocated | Phase | Used | Remaining |
 |---|---|---|---|
-| 2 | P1 — Connectivity | 0 | 2 |
-| 4 | P2 — Conversation quality | 0 | 4 |
-| 5 | P3 — Edge cases | 0 | 5 |
+| 2 | P1 — Connectivity | 2 | 0 |
+| 4 | P2 — Conversation quality | 1 | 3 |
+| 5 | P3 — Edge cases | 1 | 4 |
 | 3 | P4 — Escalation ladder | 0 | 3 |
 | 3 | P5 — Demo rehearsal | 0 | 3 |
 | 3 | P6 — Final recording (reserve) | 0 | 3 |
-| **20** | **Total** | **0** | **20** |
+| **20** | **Total** | **4** | **16** |
 
-- [ ] Additional-calls request form submitted (**do this on Day 2**)
+- [ ] Additional-calls request form submitted (**overdue — PRD §16 said Day 2; it is now Sep 8**)
+
+> **Account switched 2026-09-08.** Call #4 failed with `failureCode=404` after a
+> 361ms dial; the phone was on and never rang. Swapping to a new API key (a
+> different account — it cannot see call #4) made call #5 succeed immediately
+> with an unchanged payload. **Strong evidence the first account was out of
+> credits, and that exhaustion surfaces as an opaque carrier 404 rather than a
+> quota error** (see F-005). Counts below are for the NEW account.
 
 ### Live call log
 
 | # | Date | Phase | Purpose | Outcome | Notes |
 |---|---|---|---|---|---|
-| | | | | | |
+| 1 | 2026-09-08 | P1 | Connectivity test — no answer | no_answer | Call ID: call_E6zAMb9Zo3_NI5lKX0L3tw. SDK auth confirmed, call placed. |
+| 2 | 2026-09-08 | P1 | Connectivity test — Aryan answered | completed | Call ID: call_H0eI8KXOsaL0vozEUvD7rg. Transcript confirmed. Confidence 0.95. |
+| 3 | 2026-09-08 | P2 | Cold-chain scenario — negotiation test | timeout | Script timed out client-side. Call placed on CALL-E side. Check dashboard. |
+| 4 | 2026-09-08 | P3 | FR-5.2 verification — live `call.state` transitions via `create()` + poll, through the real agent path | failed (did not connect) | Old account. Task `call_4x1IKPpuXC8JwmOTSmXNWw` → `status=failed`, `failureCode=call_failed`. Attempt `att_6011a9cfd249d9b4` → `failureCode=404`, 0 turns, 361ms dial. Phone on, never rang. Produced F-001…F-005. |
+| 5 | 2026-09-08 | P3 | FR-5.2 re-run on the new account — full agent path, answered | **completed** | ✅ Real negotiation: responder said "available but currently busy", agent pressed for ETA, got **20 minutes**, confirmed it was inside the 90min window. `eta_minutes: 20`, `responder_available: "yes"`, `next_action: SCHEDULE_VERIFICATION_CALL`, confidence **0.86**, 21 transcript turns. Verification job queued at T+25min. Produced F-006…F-008. |
 
 ---
 
 ## Findings
 
+All four below come from one live call on 2026-09-08 (log entry #4). Raw payloads
+are preserved verbatim in `live-call-raw.json`.
+
 | ID | Date | Surface | Scenario | Expected | Actual | Repro | Severity | Suggested fix |
 |---|---|---|---|---|---|---|---|---|
-| F-001 | | | | | | | | |
+| F-001 | 2026-09-08 | SDK | `require("@call-e/calle")` from a CommonJS build | Package loads. `package.json` declares `"main": "./dist/index.js"`, which conventionally signals CJS support. | `ERR_PACKAGE_PATH_NOT_EXPORTED`. The `exports` map declares only an `"import"` condition — no `"require"` — so `main` is unreachable and misleading. Any CJS/ts-node consumer is blocked until they discover the workaround (`new Function("s","return import(s)")`). | `node -e 'require("@call-e/calle")'` | **Major** | Either add a `"require"` condition (dual build), or drop `"main"` and state ESM-only prominently in the README. `main` present + no `require` condition is the most confusing combination. |
+| F-002 | 2026-09-08 | API | Reading `attempt.startedAt` / `completedAt` alongside `task.createdAt` | Consistent, timezone-qualified timestamps across the payload. | `task.createdAt` = `2026-09-08T15:26:32.230922Z` (UTC, `Z`), but `attempt.startedAt` = `2026-09-08T11:27:29` — **no timezone designator and 4 hours offset** from the task clock, in the same response. Computing call duration across the two fields silently yields a ~4-hour error. | Any completed call; compare the two fields. | **Major** | Emit `attempt.startedAt`/`completedAt` as UTC with a `Z` designator, matching `task.createdAt`. |
+| F-003 | 2026-09-08 | API | Driving a live-progress UI from call status | `task.status` tracks the call, and `attempt.status` distinguishes ringing from talking. | `task.status` stayed `queued` for the entire call, flipping to `failed` only at the end — useless as a live signal. `attempt.status` went `(absent)` → `in_progress` → `failed`; **`dialing` was never observed**. `in_progress` was held for ~50s on a call that never connected (0 turns, `startedAt == completedAt`), so it does not mean "conversation in progress". | Poll `calls.get()` every 2s through a call. | Minor | Document what each status means, and when `dialing` is emitted (if ever). A ringing-vs-connected distinction is what a live call UI needs most. |
+| F-006 | 2026-09-08 | API | Streaming a live transcript to a dashboard during the call | Transcript turns appear on `attempt.transcriptTurns` incrementally as the conversation happens. | All 21 turns appeared **at once**, on the poll where `attempt.status` flipped to `completed`. During the ~50s conversation, `transcriptTurns` stayed empty across 16 polls. A live transcript UI is therefore impossible via polling — the conversation is only visible once it is over. | Poll `calls.get()` every 2s through an answered call. | **Major** | Publish turns incrementally, or document that they are completion-only and provide a streaming/webhook alternative for live UIs. This is the single biggest blocker to building a live call view on CALL-E. |
+| F-007 | 2026-09-08 | API | Diffing transcript turns between polls to stream only new ones | A published turn is immutable, so new turns can be detected by index. | Turns are **revised after publication** — `"hello."` on one poll became `"Hello."` on the next, and `"no, i don't need."` became `"No, I don't need."`. Any consumer diffing by array length re-emits the whole revised tail, duplicating it in the UI. | Compare `transcriptTurns` across two polls after completion. | Minor | Either freeze turns once published, or give each turn a stable `id` so consumers can dedupe reliably. |
+| F-008 | 2026-09-08 | API | Reading `taskCompleted` after a successful negotiation | `taskCompleted: true` — the agent obtained a clear yes and a numeric ETA. | `taskCompleted: false` with confidence 0.86, because the bot skipped one instructed step (the closing read-back). The `evidence` array explained this precisely and usefully. The flag is arguably right but reads as a failure for a call that achieved its objective, so control flow cannot rely on it alone. | Run a task whose prompt has more required steps than the conversation needs. | Polish | Document that `taskCompleted` means "every instruction followed", not "objective achieved" — they diverge, and `evidence` is the field that explains the gap. |
+| F-005 | 2026-09-08 | API / SDK / Dashboard | Diagnosing why an accepted call never rang | Enough information, from the API alone, to tell "you are out of credits" from "that number is unroutable" from "the carrier rejected it". | Nothing distinguishes them. `calls.listEvents()` returned 10 events whose `details` is `{}` on every single one — **including the terminal `call.failed` error event**, whose message (`"calling task completed with status=FAILED"`) only restates the status. The dial lasted 361ms (`status=calling` 15:27:29.380 → "Call ended" 15:27:29.741). The SDK exposes `calls`, `goals`, and `webhooks` but **no account, usage, or quota endpoint**, so a developer cannot check programmatically whether they have simply run out of credits. The only route is the web dashboard. | `calle.calls.listEvents(id)` on any failed call. | **Major** | Populate `details` on `call.failed` with the provider's reason, and add a lightweight account/usage endpoint (`calls remaining`, `plan status`). For a product whose free tier is 20 calls, "have I run out?" should be answerable from the API. |
+| F-004 | 2026-09-08 | API | Interpreting a failed attempt | An enumerated, documented failure reason. | `attempt.failureCode` = `"404"` — a bare numeric string, undocumented, with `failureMessage: null`. Task level gave `"call_failed"` / `"calling task status=FAILED"`, which restates the status rather than explaining it. Impossible to distinguish "no answer" from "unroutable number" from "carrier rejection" — and those need different agent behaviour (escalate vs. flag a bad roster entry). | Call a number that fails to connect. | **Major** | Enumerate `failureCode` in the OpenAPI schema, and populate `failureMessage` with something actionable. |
 
 **Surface:** SDK · API · MCP · CLI · SKILL · Docs · Dashboard
 **Severity:** Blocker · Major · Minor · Polish
@@ -64,7 +85,9 @@ Worth submitting too — knowing what works well is useful roadmap signal, and i
 
 | ID | Surface | What worked well | Why it mattered |
 |---|---|---|---|
-| P-001 | | | |
+| P-001 | API | **`evidence` was genuinely diagnostic.** On call #5 it returned: *"The bot did not ask for the required final confirmation tying Aryan to CS-04 at Zone A with the 20-minute ETA."* | It identified the exact instruction the conversation skipped — better feedback on our own prompt than reading the transcript ourselves. This is what made `taskCompleted: false` interpretable rather than mysterious, and it turned one live call into a concrete prompt fix. |
+| P-002 | API | **The agent handled an unscripted human well.** The responder mumbled "hello" twice, gave their name as "arya", and said "available but currently busy". The bot re-confirmed identity, pressed for a concrete ETA, got "20 minutes", and checked it against the safe window unprompted. | Conversation robustness is the hardest thing to verify before a demo. It held up on the first real attempt against a genuinely messy human. |
+| P-003 | API | **`resultSchema` extraction was accurate.** Free-form speech ("20 minutes", "no, i don't need") mapped correctly onto `eta_minutes: 20`, `requires_parts: false`, `responder_available: "yes"`. | Typed extraction is the whole reason a phone call can drive a workflow. It did not need prose parsing or a second LLM pass. |
 
 ---
 
