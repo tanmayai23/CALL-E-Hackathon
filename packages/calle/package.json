@@ -1,0 +1,8 @@
+{
+  "name": "@sentinel/calle",
+  "version": "0.1.0",
+  "main": "./client.ts",
+  "dependencies": {
+    "@call-e/calle": "^0.7.0"
+  }
+}
