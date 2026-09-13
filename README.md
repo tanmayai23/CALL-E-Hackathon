@@ -40,6 +40,7 @@ This is not a generic AI phone caller. CALL-E is the execution layer that obtain
 | [docs/PRD_CALL_E_HACKATHON.md](docs/PRD_CALL_E_HACKATHON.md) | Product requirements and locked wholesale workflow |
 | [docs/FRONTEND_DESIGN_PLUGINS.md](docs/FRONTEND_DESIGN_PLUGINS.md) | Frontend design system and interaction guidance |
 | [apps/web/README.md](apps/web/README.md) | Next.js dashboard setup and implementation notes |
+| [docs/FRONTEND_BACKEND_CONTRACT.md](docs/FRONTEND_BACKEND_CONTRACT.md) | Proposed order/event/REST contract the dashboard implements, for the backend and agent |
 | [SAFETY.md](SAFETY.md) | Consent, side effects, cancellation, and live-call safety |
 | [docs/CALLE_TESTING_LOG.md](docs/CALLE_TESTING_LOG.md) | CALL-E findings and live-call budget log |
 | [skills/autonomous-incident-escalation/SKILL.md](skills/autonomous-incident-escalation/SKILL.md) | Reusable CALL-E escalation skill |
@@ -55,7 +56,7 @@ skills/                   Reusable CALL-E agent skill
 logs and docs/            Safety, testing, product, and design documentation
 ```
 
-The current dashboard includes the operations view, incident/order-style simulator, live call theatre, transcript, timeline, responder/contact states, and safety controls. The remaining integration work is connecting the business-event simulator/API to the agent and streaming the real structured wholesale result back into the dashboard.
+The dashboard implements the wholesale workflow end to end against its mock driver: the orders board with follow-ups, the new-order simulator, and the order call screen — partial stock, escalation to a backup contact, price approval, callbacks, low-confidence review and duplicate suppression. The remaining integration work is the backend and agent emitting the events in [docs/FRONTEND_BACKEND_CONTRACT.md](docs/FRONTEND_BACKEND_CONTRACT.md), so the real structured wholesale result streams into the same screens.
 
 ## Quick Start
 
