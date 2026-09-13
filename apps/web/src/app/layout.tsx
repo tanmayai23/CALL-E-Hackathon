@@ -1,32 +1,42 @@
 import type { Metadata, Viewport } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { EB_Garamond, Figtree, Geist_Mono } from "next/font/google";
 import "./globals.css";
 
-const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
+/* Display serif for headlines and large figures. */
+const garamond = EB_Garamond({
+  variable: "--font-garamond",
+  subsets: ["latin"],
+  style: ["normal", "italic"],
+});
+
+/* Interface face for everything that is not a headline or a live number. */
+const figtree = Figtree({ variable: "--font-figtree", subsets: ["latin"] });
+
+/* Live data — monospace + tabular so changing values never reflow. */
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "Sentinel Ops — autonomous escalation",
+  title: "Sentinel Ops — wholesale coordination on CALL-E",
   description:
-    "Sentinel Ops watches real signals, decides when a failure needs a human, and phones that human through CALL-E.",
+    "Sentinel Ops calls the wholesaler, negotiates stock and dispatch, and writes the commitment back to the order.",
 };
 
 export const viewport: Viewport = {
-  themeColor: "#0A0C10",
-  colorScheme: "dark light",
+  themeColor: "#FFFFEB",
+  colorScheme: "light dark",
 };
 
 /**
- * Dark is the default and the demo theme (§2.1). This runs before paint so a
- * light-mode operator never sees a dark flash, and vice versa.
+ * Cream is the default and the demo theme. This runs before paint so an
+ * operator who chose dark never sees a cream flash, and vice versa.
  */
 const THEME_SCRIPT = `
 (function () {
   try {
     var stored = localStorage.getItem("sentinel.theme");
-    document.documentElement.dataset.theme = stored === "light" ? "light" : "dark";
+    document.documentElement.dataset.theme = stored === "dark" ? "dark" : "light";
   } catch (e) {
-    document.documentElement.dataset.theme = "dark";
+    document.documentElement.dataset.theme = "light";
   }
 })();
 `;
@@ -35,9 +45,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html
       lang="en"
-      data-theme="dark"
+      data-theme="light"
       suppressHydrationWarning
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${garamond.variable} ${figtree.variable} ${geistMono.variable} h-full antialiased`}
     >
       <head>
         <script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />

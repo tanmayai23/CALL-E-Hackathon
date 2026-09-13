@@ -25,12 +25,12 @@ const chip = cva(
   {
     variants: {
       state: {
-        idle: "border-state-idle/30 bg-state-idle/10 text-state-idle",
-        info: "border-state-info/30 bg-state-info/10 text-state-info",
-        active: "border-state-active/40 bg-state-active/15 text-state-active",
-        warning: "border-state-warning/40 bg-state-warning/15 text-state-warning",
-        critical: "border-state-critical/50 bg-state-critical/15 text-state-critical",
-        success: "border-state-success/40 bg-state-success/15 text-state-success",
+        idle: "border-state-idle/25 bg-state-idle/8 text-state-idle",
+        info: "border-state-info/25 bg-state-info/8 text-state-info",
+        active: "border-state-active/30 bg-state-active/10 text-state-active",
+        warning: "border-state-warning/30 bg-state-warning/10 text-state-warning",
+        critical: "border-state-critical/35 bg-state-critical/10 text-state-critical",
+        success: "border-state-success/30 bg-state-success/10 text-state-success",
       },
       size: {
         sm: "px-2 py-0.5 text-[11px]",
