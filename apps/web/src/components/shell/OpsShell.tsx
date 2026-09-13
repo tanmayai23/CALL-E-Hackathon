@@ -17,7 +17,7 @@ export function OpsShell({ children }: { children: React.ReactNode }) {
   const killSwitch = useKillSwitch();
 
   return (
-    <div className="flex h-dvh flex-col overflow-hidden bg-base">
+    <div className="flex h-dvh flex-col overflow-hidden bg-canvas">
       <CommandBar killSwitch={killSwitch} />
 
       {/* A halted system says so in persistent UI. §13 lists a toast for

@@ -1,19 +1,46 @@
+/**
+ * Every state in the product, mapped once to colour + icon + text.
+ *
+ * Components never pick a state colour themselves; they look it up here. That
+ * is what keeps the rule "colour is semantic, and never appears alone" true
+ * across every screen.
+ */
+
 import type { LucideIcon } from "lucide-react";
 import {
   AlertTriangle,
+  BellOff,
+  CalendarClock,
   CheckCircle2,
+  CircleDashed,
   CircleSlash,
   Ear,
-  Info,
+  Gauge,
+  Hourglass,
   OctagonAlert,
+  PackageCheck,
+  PackageOpen,
+  PackageX,
   PhoneCall,
   PhoneMissed,
   PhoneOff,
   ScanLine,
+  ShieldQuestion,
   Timer,
   UserSearch,
+  Voicemail,
 } from "lucide-react";
-import type { CallState, IncidentStatus, Severity } from "@/lib/contracts/domain";
+import type {
+  CallState,
+  ContactReached,
+  FollowUpKind,
+  NextAction,
+  OrderStatus,
+  StockStatus,
+  TriggerType,
+  Urgency,
+} from "@/lib/contracts/domain";
+import { HUMAN_REVIEW_THRESHOLD } from "@/lib/contracts/domain";
 import type { ChipState } from "@/components/ui/StateChip";
 
 export interface ChipSpec {
@@ -23,21 +50,25 @@ export interface ChipSpec {
   pulse?: boolean;
 }
 
-export const SEVERITY: Record<Severity, ChipSpec> = {
-  INFO: { state: "info", label: "INFO", icon: Info },
-  WARNING: { state: "warning", label: "WARNING", icon: AlertTriangle },
-  CRITICAL: { state: "critical", label: "CRITICAL", icon: OctagonAlert },
-};
-
-export const STATUS: Record<IncidentStatus, ChipSpec> = {
-  OPEN: { state: "warning", label: "Open", icon: AlertTriangle },
+export const ORDER_STATUS: Record<OrderStatus, ChipSpec> = {
+  AWAITING_CONFIRMATION: { state: "warning", label: "Awaiting confirmation", icon: Hourglass },
   CALLING: { state: "active", label: "Calling", icon: PhoneCall, pulse: true },
-  RESOLVED: { state: "success", label: "Resolved", icon: CheckCircle2 },
-  UNRESOLVED: { state: "critical", label: "Unresolved", icon: OctagonAlert },
+  CONFIRMED: { state: "success", label: "Confirmed", icon: CheckCircle2 },
+  PARTIALLY_CONFIRMED: { state: "success", label: "Partially confirmed", icon: PackageCheck },
+  APPROVAL_REQUIRED: { state: "info", label: "Approval required", icon: ShieldQuestion },
+  CALLBACK_SCHEDULED: { state: "idle", label: "Callback scheduled", icon: CalendarClock },
   HUMAN_REVIEW: { state: "info", label: "Human review", icon: UserSearch },
+  UNRESOLVED: { state: "critical", label: "Unresolved", icon: OctagonAlert },
+  SUPPRESSED: { state: "idle", label: "Suppressed", icon: BellOff },
 };
 
-/** §4.2 — every call state has an unmistakable signature in a still frame. */
+export const URGENCY: Record<Urgency, ChipSpec> = {
+  ROUTINE: { state: "idle", label: "Routine", icon: Gauge },
+  PRIORITY: { state: "warning", label: "Priority", icon: AlertTriangle },
+  URGENT: { state: "critical", label: "Urgent", icon: OctagonAlert },
+};
+
+/** §4.2 of the design guide — every call state is readable from a still frame. */
 export const CALL: Record<CallState, ChipSpec> = {
   queued: { state: "idle", label: "Queued", icon: Timer },
   dialling: { state: "active", label: "Dialling…", icon: PhoneCall, pulse: true },
@@ -49,20 +80,48 @@ export const CALL: Record<CallState, ChipSpec> = {
   no_answer: { state: "critical", label: "No answer", icon: PhoneMissed },
 };
 
-export const SEVERITY_HEX: Record<Severity, string> = {
-  INFO: "var(--state-info)",
-  WARNING: "var(--state-warning)",
-  CRITICAL: "var(--state-critical)",
+export const STOCK_STATUS: Record<StockStatus, ChipSpec> = {
+  confirmed: { state: "success", label: "In stock", icon: PackageCheck },
+  partial: { state: "warning", label: "Partial stock", icon: PackageOpen },
+  unavailable: { state: "critical", label: "Unavailable", icon: PackageX },
+  unknown: { state: "idle", label: "Unknown", icon: CircleDashed },
 };
 
-/**
- * FR-6.3 — extraction below this confidence never auto-closes an incident; it
- * is routed to a human. Enforced in code, never in the prompt (CLAUDE.md §12:
- * "an LLM instruction is not a safety control").
- */
-export const HUMAN_REVIEW_THRESHOLD = 0.7;
+export const CONTACT_REACHED: Record<ContactReached, ChipSpec> = {
+  yes: { state: "success", label: "Reached", icon: CheckCircle2 },
+  no: { state: "critical", label: "Not reached", icon: PhoneMissed },
+  wrong_person: { state: "warning", label: "Wrong person", icon: UserSearch },
+  voicemail: { state: "warning", label: "Voicemail", icon: Voicemail },
+  unknown: { state: "idle", label: "Unknown", icon: CircleDashed },
+};
 
-/** Confidence scale — §2.2. */
+export const NEXT_ACTION_LABEL: Record<NextAction, string> = {
+  CONFIRM_ORDER: "Confirm order",
+  PARTIAL_CONFIRMATION: "Partial confirmation",
+  REQUEST_APPROVAL: "Request approval",
+  SCHEDULE_CALLBACK: "Schedule callback",
+  ESCALATE_NEXT_CONTACT: "Escalate to next contact",
+  HUMAN_REVIEW: "Human review",
+};
+
+export const TRIGGER_LABEL: Record<TriggerType, string> = {
+  ORDER: "Order event",
+  INVENTORY: "Inventory event",
+  DELIVERY: "Delivery event",
+  EXCEPTION: "Exception",
+  IOT: "Sensor event",
+};
+
+export const FOLLOW_UP_LABEL: Record<FollowUpKind, string> = {
+  VERIFICATION: "Verification call",
+  CALLBACK: "Callback",
+  REMAINING_QUANTITY: "Remaining quantity",
+};
+
+/** Re-exported beside the confidence scale it anchors; defined with the domain. */
+export { HUMAN_REVIEW_THRESHOLD };
+
+/** Confidence scale. */
 export function confidenceBand(score: number): {
   token: string;
   label: string;
@@ -76,38 +135,42 @@ export function confidenceBand(score: number): {
   return { token: "var(--conf-low)", label: "NEEDS REVIEW", chip: "critical", icon: CircleSlash };
 }
 
+/** Plain-language labels for the §7.2 result fields. */
 export const FIELD_LABELS: Record<string, string> = {
-  responder_available: "responder available",
-  eta_minutes: "eta minutes",
-  eta_within_safe_window: "eta within safe window",
-  acknowledged_severity: "acknowledged severity",
-  requires_backup: "requires backup",
-  requires_parts: "requires parts",
-  decline_reason: "decline reason",
-  callback_requested_at: "callback requested at",
+  contact_reached: "contact reached",
+  stock_status: "stock status",
+  confirmed_quantity: "confirmed quantity",
+  remaining_quantity: "remaining quantity",
+  unit_price: "unit price",
+  currency: "currency",
+  dispatch_date: "dispatch date",
+  delivery_eta: "delivery eta",
+  delay_reason: "delay reason",
+  callback_requested_at: "callback requested",
+  requires_approval: "requires approval",
   verbatim_commitment: "verbatim commitment",
   next_action: "next action",
 };
 
 /**
- * Field order matters on camera. §4.1 draws the result as a single strip, so
- * the five fields that actually decide the workflow lead, and the rest sit
- * behind an expander rather than pushing the payoff below the fold.
+ * The fields that decide the workflow lead; the rest sit behind an expander so
+ * the payoff strip never falls below the fold at 1440×900.
  */
 export const PRIMARY_FIELDS = [
-  "responder_available",
-  "eta_minutes",
-  "eta_within_safe_window",
-  "verbatim_commitment",
+  "stock_status",
+  "confirmed_quantity",
+  "remaining_quantity",
+  "dispatch_date",
   "next_action",
 ];
 
 export const SECONDARY_FIELDS = [
-  "acknowledged_severity",
-  "requires_backup",
-  "requires_parts",
-  "decline_reason",
+  "contact_reached",
+  "delivery_eta",
+  "unit_price",
+  "currency",
+  "requires_approval",
   "callback_requested_at",
+  "delay_reason",
+  "verbatim_commitment",
 ];
-
-export const FIELD_ORDER = [...PRIMARY_FIELDS, ...SECONDARY_FIELDS];

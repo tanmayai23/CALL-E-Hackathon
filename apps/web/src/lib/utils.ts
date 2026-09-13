@@ -1,5 +1,18 @@
 import { clsx, type ClassValue } from "clsx";
-import { twMerge } from "tailwind-merge";
+import { extendTailwindMerge } from "tailwind-merge";
+
+/**
+ * tailwind-merge only knows Tailwind's default scales. Without this it reads
+ * `text-display-m` as a colour and drops it in favour of `text-ink`. Mirrors
+ * the `--text-display-*` sizes in globals.css.
+ */
+const twMerge = extendTailwindMerge({
+  extend: {
+    theme: {
+      text: ["display-s", "display-m", "display-l", "display-xl"],
+    },
+  },
+});
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));

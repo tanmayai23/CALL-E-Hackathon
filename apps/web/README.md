@@ -1,11 +1,11 @@
 # Sentinel Ops — Dashboard
 
-The operator-facing frontend for **Sentinel Ops**, the autonomous incident escalation agent built on [CALL-E](https://heycall-e.com).
+The operator-facing frontend for **Sentinel Ops**, the wholesale coordination agent built on [CALL-E](https://heycall-e.com).
 
-> **The dashboard's job is to make an invisible thing visible: an AI agent thinking, deciding, and talking to a human on the phone — live.**
+> **The dashboard's job is to make an invisible thing visible: an agent calling a supplier, negotiating what is possible, and turning what was said into a commitment the order is updated from.**
 
-Owner: **Vishal** (implementation) · **Soham** (design system, UX architecture)
-Specification: [`docs/FRONTEND_DESIGN_PLUGINS.md`](../../docs/FRONTEND_DESIGN_PLUGINS.md) · Contracts: [`CLAUDE.md`](../../CLAUDE.md) §8
+Owner: **Vishal** (implementation) · **Soham** (design system, UX)
+Requirements: [`docs/PRD_CALL_E_HACKATHON.md`](../../docs/PRD_CALL_E_HACKATHON.md) v2.0 · Backend contract: [`docs/FRONTEND_BACKEND_CONTRACT.md`](../../docs/FRONTEND_BACKEND_CONTRACT.md)
 
 ---
 
@@ -14,36 +14,34 @@ Specification: [`docs/FRONTEND_DESIGN_PLUGINS.md`](../../docs/FRONTEND_DESIGN_PL
 1. [Quick start](#1-quick-start)
 2. [Configuration](#2-configuration)
 3. [Architecture](#3-architecture)
-4. [Contracts consumed](#4-contracts-consumed)
+4. [Contracts](#4-contracts)
 5. [The mock driver](#5-the-mock-driver)
 6. [Design system](#6-design-system)
 7. [Screens](#7-screens)
-8. [The 3D layer](#8-the-3d-layer)
-9. [Accessibility and QA](#9-accessibility-and-qa)
-10. [Deliberate deviations](#10-deliberate-deviations)
-11. [Not built in this pass](#11-not-built-in-this-pass)
+8. [Accessibility and QA](#8-accessibility-and-qa)
+9. [Deliberate deviations](#9-deliberate-deviations)
+10. [Not built in this pass](#10-not-built-in-this-pass)
 
 ---
 
 ## 1. Quick start
 
 ```bash
-cd apps/web
-npm install
-npm run dev
+pnpm install              # from the repository root — it is a pnpm workspace
+pnpm --dir apps/web dev
 ```
 
-Open <http://localhost:3000>, go to **Simulator**, and trigger **Cold-chain critical**. You will land in the Live Call Theatre and watch a signal become an incident, a call, a negotiation, and a typed commitment in about thirty seconds.
+Open <http://localhost:3000>, choose **New order**, keep the pre-filled ORD-482 (200 cases, due today) and the **Partial stock** supplier behaviour, and place the call. You land on the order screen and watch the order become a call, a negotiation and a typed commitment: **120 cases today, 80 tomorrow morning**, with a follow-up scheduled for the 80.
 
 | Script | Purpose |
 |---|---|
-| `npm run dev` | Development server |
-| `npm run build` | Production build — **record the demo against this, never `dev`** |
-| `npm run start` | Serve the production build |
-| `npm run lint` | ESLint |
-| `npx tsc --noEmit` | Type check |
+| `pnpm --dir apps/web dev` | Development server |
+| `pnpm --dir apps/web build` | Production build — **record the demo against this, never `dev`** |
+| `pnpm --dir apps/web start` | Serve the production build |
+| `pnpm --dir apps/web lint` | ESLint |
+| `./node_modules/.bin/tsc --noEmit` (in `apps/web`) | Type check. Plain `npx tsc` resolves the wrong package inside a workspace. |
 
-**Requirements:** Node 20+. The project uses npm (the spec suggests pnpm; either works — only the lockfile differs).
+**Requirements:** Node 20+, pnpm 10+.
 
 ---
 
@@ -53,13 +51,13 @@ One variable decides where the dashboard's data comes from. See [`.env.example`]
 
 ```bash
 # Unset (default) → the in-app mock driver.
-# Set            → Sameer's backend.
+# Set            → the real backend.
 NEXT_PUBLIC_API_BASE=https://sentinel-api.up.railway.app
 ```
 
-Every screen talks to the REST + SSE contract in [`CLAUDE.md`](../../CLAUDE.md) §8.2/§8.3 and nothing else, through [`src/lib/api.ts`](src/lib/api.ts). No component knows where its data came from, so **integration is a one-line change, not a week of discovery.**
+Every screen talks to the REST + SSE contract in [`docs/FRONTEND_BACKEND_CONTRACT.md`](../../docs/FRONTEND_BACKEND_CONTRACT.md), and only through [`src/lib/api.ts`](src/lib/api.ts). No component knows where its data came from, so **moving to the real backend is a base-URL change, not a rewrite.**
 
-When the mock driver is active the command bar shows a persistent `Mock driver` chip. That indicator is not decorative — see [§5](#5-the-mock-driver).
+While the mock driver is the source, the command bar shows a persistent `Mock driver` chip. That chip is a requirement, not decoration — see [§5](#5-the-mock-driver).
 
 ---
 
@@ -68,29 +66,31 @@ When the mock driver is active the command bar shows a persistent `Mock driver` 
 ### 3.1 Data flow
 
 ```
-  ┌──────────────────────────────────────────────────────────┐
-  │  GET  /api/v1/incidents/:id          → incident + meta   │
-  │  GET  /api/v1/incidents/:id/stream   → SentinelEvent SSE │
-  └───────────────────────────┬──────────────────────────────┘
-                              │
-                    Zod validation at the boundary
-                    (a malformed frame is dropped
-                     and counted, never thrown)
-                              │
-                              ▼
-              lib/incident-view.ts · reduceIncidentView()
-              pure fold: events → IncidentView
-                              │
-                              ▼
-              hooks/useIncidentStream.ts
-              load state · connection state · dispatch
-                              │
-                              ▼
-              components/incident/IncidentTheatre.tsx
-              orchestration only — hands each region to a column
+  ┌──────────────────────────────────────────────────────────────┐
+  │  GET  /api/v1/orders/:id           → order + contact ladder  │
+  │  GET  /api/v1/orders/:id/stream    → SentinelEvent SSE       │
+  └───────────────────────────────┬──────────────────────────────┘
+                                  │
+                     Zod validation at the boundary
+                     (a malformed frame is dropped
+                      and counted, never thrown)
+                                  │
+                                  ▼
+               lib/order-view.ts · reduceOrderView()
+               pure fold: events → OrderView
+                                  │
+                                  ▼
+               hooks/useOrderStream.ts
+               load state · connection state · dispatch
+                                  │
+                                  ▼
+               components/order/OrderTheatre.tsx
+               orchestration only — hands each region to a column
 ```
 
-The reducer is deliberately free of React and I/O. Given the same ordered events it always produces the same view, so an incident can be replayed from its event log and asserted against without a browser.
+The reducer has no React and no I/O. Given the same ordered events it always produces the same view, so an order can be replayed from its event log and asserted against without a browser.
+
+The orders board polls `GET /api/v1/orders` and `GET /api/v1/followups` through [`useOrderFeed`](src/hooks/useOrderFeed.ts): every 2 s while something is moving, every 8 s otherwise.
 
 ### 3.2 Directory map
 
@@ -100,238 +100,237 @@ src/
 │   ├── page.tsx                     Landing
 │   ├── ops/
 │   │   ├── layout.tsx               Ops shell wrapper
-│   │   ├── page.tsx                 Incident Command
-│   │   ├── incident/[id]/page.tsx   Live Call Theatre
-│   │   └── simulator/page.tsx       Scenario control
-│   ├── api/v1/                      Mock driver route handlers
+│   │   ├── page.tsx                 Orders board
+│   │   ├── orders/[id]/page.tsx     Order call screen
+│   │   └── simulator/page.tsx       New order (business-event simulator)
+│   ├── api/v1/                      Mock driver route handlers (see §5)
 │   └── globals.css                  Design tokens — the single source of colour
 │
 ├── components/
-│   ├── ui/                          StateChip · Panel · Button · ConnectionStatus
+│   ├── ui/                          Button · Panel · StateChip · ChoicePills · BrandMark · ConnectionStatus
 │   ├── shell/                       CommandBar · Navigation · OpsShell
-│   ├── ops/                         IncidentCommand · IncidentRow · MetricsRail
-│   ├── incident/                    The Live Call Theatre and its panels
-│   └── three/                       FacilityStage (lazy boundary) · FacilityView (R3F)
+│   ├── landing/                     The nine landing sections
+│   ├── ops/                         OrdersBoard · OrderRow · MetricsRail · FollowUpsPanel · NewOrderConsole
+│   └── order/                       The order call screen and its panels
 │
 ├── hooks/
-│   ├── useIncidentStream.ts         SSE subscription + load state
-│   ├── useIncidentFeed.ts           Polled incident list
+│   ├── useOrderStream.ts            SSE subscription + load state
+│   ├── useOrderFeed.ts              Polled order list and follow-ups
 │   ├── useCallCues.ts               Audible call-state cues
 │   └── useClientValue.ts            Browser-only reads without cascading renders
 │
 └── lib/
-    ├── contracts/                   Frozen types + Zod schemas (see §4)
+    ├── contracts/                   Domain types + Zod event schema (see §4)
     ├── mock/                        The dev harness (see §5)
-    ├── incident-view.ts             Pure event → view projection
+    ├── order-view.ts                Pure event → view projection
     ├── state-map.ts                 State → colour + icon + label, in one place
+    ├── time.ts                      Facility time (IST) — the only place a timezone appears
     ├── motion.ts                    Motion tokens
     ├── sound.ts                     Synthesised call cues
     └── api.ts                       The backend swap point
 ```
 
-### 3.3 Component conventions
+### 3.3 Conventions
 
-- **Panels own their layout; screens own composition.** `IncidentTheatre` resolves the five states and delegates; it contains no panel markup.
-- **State is derived, not synced.** No effect exists purely to copy one piece of state into another.
-- **`Panel` bodies fill by default.** Pass `flex-none` alongside a height when a panel must stay a fixed size — `flex-1` otherwise wins and the body grows.
-- **Grid tracks use `minmax(0, 1fr)`, never a bare `1fr`.** A bare `1fr` has an automatic minimum, so any `truncate` inside (which sets `white-space: nowrap`) forces the track wider than its container and pushes a horizontal scrollbar onto the page.
+- **Panels own their layout; screens own composition.** `OrderTheatre` resolves the five states and delegates. It contains no panel markup.
+- **State is derived, not synced.** No effect exists only to copy one piece of state into another.
+- **The order update is authoritative.** Once `order.updated` arrives, its quantities are what the order shows — a `null` means nothing was confirmed. Before it, a result counts only if its confidence clears the review floor (`isTrusted` in `order-view.ts`).
+- **Grid tracks use `minmax(0, 1fr)`, never a bare `1fr` or an implicit column.** An automatic minimum lets any `truncate` inside force the track wider than its container.
+- **`cn()` knows the display sizes.** `tailwind-merge` only knows Tailwind's default scale; [`src/lib/utils.ts`](src/lib/utils.ts) teaches it `text-display-*`, otherwise it reads them as colours and drops them.
 
 ---
 
-## 4. Contracts consumed
+## 4. Contracts
 
-**These are frozen and owned by Sameer** ([`CLAUDE.md`](../../CLAUDE.md) §8, Rule 4). Changing one silently breaks four other people's work.
+The dashboard implements the wholesale contract in [`docs/FRONTEND_BACKEND_CONTRACT.md`](../../docs/FRONTEND_BACKEND_CONTRACT.md). **Its status is proposed:** the dashboard runs it end to end against the mock, and it becomes canonical when the backend and agent owners adopt it.
 
-| Contract | Defined here | Canonical source |
-|---|---|---|
-| `SentinelEvent` union + Zod schema | [`src/lib/contracts/events.ts`](src/lib/contracts/events.ts) | CLAUDE.md §8.3 |
-| Domain types (`Incident`, `Responder`, …) | [`src/lib/contracts/domain.ts`](src/lib/contracts/domain.ts) | CLAUDE.md §7, §8.1 |
-| REST endpoints | [`src/app/api/v1/`](src/app/api/v1) | CLAUDE.md §8.2 |
+| Contract | Defined here |
+|---|---|
+| `SentinelEvent` union + Zod schema | [`src/lib/contracts/events.ts`](src/lib/contracts/events.ts) |
+| Domain types (`Order`, `Contact`, `WholesaleResult`, `FollowUp`, …) | [`src/lib/contracts/domain.ts`](src/lib/contracts/domain.ts) |
+| REST endpoints | [`src/app/api/v1/`](src/app/api/v1) |
 
-> **⚠️ Known duplication.** [`CLAUDE.md`](../../CLAUDE.md) §13 places the canonical types in `packages/types`, imported by both frontend and backend — one definition, never two. **That package does not exist in this repository yet.** The files above are a faithful mirror, kept in one place so the swap is a single import change:
->
-> ```ts
-> import { SentinelEventSchema, type SentinelEvent } from "@sentinel/types";
-> ```
->
-> Until then, treat them as read-only. If a field must change, it changes in both places at once with the owner's agreement.
+> **`packages/types` is deliberately untouched.** The agent and its tests import it, and it still describes the v1 incident model. These files are dashboard-local until the owners migrate; the contract document lists the v1 → v2 event mapping to make that migration mechanical.
 
 ### Event handling
 
-Every SSE frame is validated with Zod before it reaches state. Members are **loose objects**: unknown keys pass through rather than being stripped, so a backend carrying `traceId` on the wire (Rule 7) does not get it silently deleted, and an added field never breaks the dashboard mid-demo.
+Every SSE frame is validated with Zod before it reaches state. Members are **loose objects**: unknown keys pass through rather than being stripped, so a backend carrying `traceId` on the wire keeps it, and an added field never breaks the dashboard mid-demo.
 
-A frame that fails validation is dropped, counted, and the count is shown next to the connection indicator. One malformed event degrades one panel; it never white-screens the dashboard.
+A frame that fails validation is dropped and counted, and the count is shown next to the connection indicator. One malformed event degrades one panel; it never white-screens the dashboard.
 
 ---
 
 ## 5. The mock driver
 
-Implements FR-5.6 — a mock that satisfies the identical interface so five people can build in parallel without burning the 20-call CALL-E budget.
+A mock that satisfies the identical interface, so the team can build in parallel without spending the 20-call CALL-E budget.
 
-**It is a dev harness. It is never the demo path.** The recorded demo and the deployed app both run the real SDK.
+**It is a dev harness. It is never the demo path.** The recorded demo and the deployed app run the real SDK.
 
 ```
 src/lib/mock/
-├── facility.ts              Northgate: 5 assets, 4 consented responders
-├── store.ts                 In-memory incidents, replay engine, kill switch
+├── directory.ts             Northgate Distributors, Metro Supply Co., three consented contacts, the product
+├── store.ts                 Orders, runs, follow-ups, approvals, kill switch, seeded history
 └── scenarios/
-    ├── script.ts            ScriptStep, word-by-word transcript streaming
-    ├── cold-chain-critical.ts   The hero scenario (PRD §4.1)
-    ├── refusal-escalation.ts    3 rungs, no human in the loop
-    ├── transient-spike.ts       Suppression — F13
-    └── sensor-offline.ts        Asset unreachable — F12
+    ├── script.ts            ScriptBuilder — word-by-word transcript streaming, IST times
+    ├── partial-stock.ts     The hero (PRD §4.1)
+    ├── no-answer-escalation.ts
+    ├── price-change.ts
+    ├── callback.ts
+    ├── vague-answer.ts
+    └── duplicate-order.ts
 ```
 
-Each scenario is a list of `{ at, event }` steps replayed in real time over the frozen contract. The SSE route replays its whole emitted buffer on connect, so a page loaded mid-call catches up rather than showing a half-built timeline.
+| Supplier behaviour | What happens | Ends in |
+|---|---|---|
+| **Partial stock** (hero) | 60% ready today; the agent confirms that part and dates the rest | `PARTIALLY_CONFIRMED`, follow-ups for the remainder and a verification |
+| No answer → backup | The primary contact never picks up; the backup confirms everything | `CONFIRMED` on rung 2 |
+| Price changed | Stock is fine but the price rose ₹1,850 → ₹2,050; the agent refuses to accept it | `APPROVAL_REQUIRED` → Approve (`CONFIRMED`) or Reject (`HUMAN_REVIEW`) |
+| Callback requested | "Call me back at four" | `CALLBACK_SCHEDULED` with a callback follow-up |
+| Vague answer | "Sometime this week, probably" — asked once for a date, still none; confidence 0.58 | `HUMAN_REVIEW`; the floor wins over the suggested action |
+| Duplicate order | The same order is already awaiting confirmation | `SUPPRESSED`; no call placed |
 
-### Honesty rules (Rule 8)
+Every scenario is parameterised by the order from the form: the reference, the quantity and the dates. Each is a list of `{ at, event }` steps replayed in real time over the contract. The SSE route replays the emitted buffer on connect, so a page opened mid-call catches up instead of showing a half-built timeline. `call.state` events carry their own `ts`, so a replayed call keeps its real duration.
 
-Everything in `src/lib/mock/` is a **labelled fixture**. None of it is real CALL-E output and none is presented as such:
+The store seeds five past orders across the outcomes, so the board and the follow-ups panel are never empty on a cold start. **Clear live runs** on the New order screen returns to that seed.
+
+### Honesty rules
+
+Everything in `src/lib/mock/` is a **labelled fixture**. None of it is real CALL-E output and none of it is presented as such:
 
 - The command bar shows a persistent `Mock driver` chip whenever the mock is the source.
-- The simulator states plainly that no call is placed and no credit is spent.
-- The call waveform labels itself **"Turn-taking indicator — not an audio visualisation"**, because its bars are driven by call state, not audio. Per §4.4 it must never be called "live audio" in the UI or the narration. When real audio is available, swap the amplitude source for an `AnalyserNode` and change that label with it.
+- The New order screen states plainly that no call is placed and no credit is spent. Its supplier-behaviour picker exists only in mock mode; on the real path the supplier's answer is whatever the person says.
+- The call waveform labels itself **"Turn-taking indicator — not an audio visualisation"**, because its bars are driven by call state, not audio.
+- The landing's ORD-482 figures are labelled as an example from the hero scenario, and its numbers (90 s ceiling, 3 contacts, 0.70 floor, 1 trace ID) are system properties, not claimed results.
 
 ### Data realism
 
-The roster uses realistic Indian names, roles, shifts and zones — §13 lists `John Doe` / `+1 555-0100` / lorem ipsum as an anti-pattern that instantly undermines credibility. Phone numbers render **masked** (`+91 98204 ••207`), which is what a real ops console does with responder PII and what keeps a demo recording safe.
+Contacts use realistic Indian names, roles, regions and working hours (09:00–19:00 IST). Phone numbers render **masked** (`+91 98204 ••207`), which is what a real operations console does with contact PII and what keeps a demo recording safe.
 
 ---
 
 ## 6. Design system
 
-Tokens live in [`src/app/globals.css`](src/app/globals.css) and are the single source of colour.
+Warm, editorial and minimal: a cream ground, ink type, a serif display face, one lilac call to action and a deep teal brand accent. The reference is [wisprflow.ai](https://wisprflow.ai) — its palette, type and rhythm were measured, not copied.
 
-> **Rule: if a colour appears on screen that is not derived from that block, it is a bug.**
+> **Status:** this replaces the v1 dark mission-control palette. It is flagged for **Soham's review**, since the design tokens are his contract. [`docs/FRONTEND_DESIGN_PLUGINS.md`](../../docs/FRONTEND_DESIGN_PLUGINS.md) still describes v1 and has not been rewritten.
 
-| Layer | Tokens |
+### Tokens
+
+Tokens live in [`src/app/globals.css`](src/app/globals.css). **A colour on screen that is not derived from that block is a bug.**
+
+| Role | Light (default) | Tailwind |
+|---|---|---|
+| Ground · panel · stone | `#FFFFEB` · `#FFFFF6` · `#E4E4D0` | `bg-canvas` `bg-panel` `bg-stone` |
+| Ink · secondary · muted | `#1A1A1A` · `#4D4C45` · `#67665C` | `text-ink` `text-ink-dim` `text-ink-faint` |
+| Call to action | lilac `#F0D7FF` with a 2 px ink border | `bg-lilac` `text-on-lilac` |
+| Brand bands | teal `#034F46` · ink `#1A1A1A`, cream text | `bg-teal` `bg-band` `text-on-band` |
+| States | idle `#67665C` · info `#35578A` · active `#6A3DBF` · warning `#8F5400` · critical `#B8341D` · success `#0A6656` | `text-state-*` |
+| Confidence | high · medium · low follow success · warning · critical | `text-conf-*` |
+
+Every text colour clears WCAG 4.5:1 on its ground. The dark theme is warm charcoal and carries the **same semantic roles** at dark-safe values; it is a toggle in the command bar, and cream is the demo theme.
+
+**Brand colours never mean a state.** Lilac and teal are identity; success, warning and so on are the only colours that carry meaning, and each appears with an icon and a label.
+
+### Type
+
+| Face | Use |
 |---|---|
-| Surfaces | `--bg-base` `--bg-panel` `--bg-elevated` `--border-subtle` `--border-strong` |
-| Text | `--text-primary` `--text-secondary` `--text-muted` |
-| Semantic states | `--state-idle` `--state-info` `--state-active` `--state-warning` `--state-critical` `--state-success` |
-| Confidence | `--conf-high` `--conf-medium` `--conf-low` |
+| **EB Garamond** 400 | Headlines (`.display`) and big figures (`.display-num`, lining + tabular). The second line of a headline is set in *italic*. |
+| **Figtree** 400–600 | Interface text, labels (`.micro`), eyebrows (`.eyebrow`) |
+| **Geist Mono** | Every live value (`.data-value`, tabular), so 118 → 120 shifts nothing |
 
-Exposed to Tailwind through `@theme` as `bg-panel`, `text-ink-dim`, `border-state-critical/50` and so on. **Colour is semantic only** — never an accent for aesthetics.
+The interface scale is fixed: 12 / 14 / 16 / 20 / 24 / 32 / 48. The landing adds a fluid display scale — `text-display-s/m/l/xl`, 48 to 120 px — that shrinks to fit a phone.
 
-Light mode re-renders the *same semantic roles* at contrast-safe values on light surfaces. No new hues are introduced. Dark is the default and the demo theme.
+The type classes live in `@layer components`, so a utility on the same element still wins (`eyebrow text-on-band/70`). `.display` and `.display-num` set Tailwind's `--tw-leading`, so a size utility keeps their tight leading while an explicit `leading-*` still overrides it.
 
-### Non-negotiables
+### Layout
 
-- **Every state is colour + icon + text.** [`StateChip`](src/components/ui/StateChip.tsx) has no variant that renders a bare dot, because a bare dot fails both a screen reader and a judge watching a compressed video. All state → chip mappings live in [`src/lib/state-map.ts`](src/lib/state-map.ts).
-- **All live numbers use `.data-value`** (monospace + `tabular-nums`), so a temperature ticking 9.8 → 10.4 shifts nothing.
-- **Fixed type scale:** 12 / 14 / 16 / 20 / 24 / 32 / 48. Nothing between.
-- **Elevation is border contrast, not shadow.** Shadows only on true overlays.
-
-### Art direction
-
-Mission-control instrument panel — an aircraft cockpit, a NOC wall, a trading terminal. Not a SaaS marketing site. Visual interest comes from typography, grid tension, density, and texture built from existing tokens at varying alpha: a 32px survey grid, film grain, hairline rules, viewfinder corner brackets, diagonal hatching for deliberately blank regions.
-
-§13 lists the purple/blue AI gradient hero as the first anti-pattern. There are no decorative gradients in this app.
+- One container: max 1200 px, 24/40 px gutters (`.container-page`), on a 12-column grid.
+- Section rhythm: 72 px on mobile, 120 px on desktop (`.section`). The landing alternates cream → ink → cream → teal → cream → teal.
+- Radii: 8 px small, 12 px buttons, 16 px cards and panels, 32–48 px feature blocks, full pills for nav and chips.
+- Flat: elevation comes from surface contrast, not shadow. The one shadow (`--shadow-float`) is reserved for floating elements such as the landing nav.
 
 ### Motion
 
-Tokens in [`src/lib/motion.ts`](src/lib/motion.ts). Motion signals change, never decoration; 150–250 ms; ease-out; 60 ms stagger; **one hero animation per screen**.
-
-`prefers-reduced-motion` is respected globally and **looping animations stop entirely** — the ring pulse, the sweep and the waveform all fall back to static indicators.
+Tokens in [`src/lib/motion.ts`](src/lib/motion.ts). Motion signals a change, never decoration: 150–250 ms, ease-out, one hero animation per screen. `prefers-reduced-motion` stops every loop — the ring pulse, the waveform, the transcript ribbon and the marquee — and they fall back to static states.
 
 ---
 
 ## 7. Screens
 
-| Route | Screen | Effort budget |
-|---|---|---|
-| `/` | Landing | 5% |
-| `/ops` | Incident Command | 20% |
-| `/ops/incident/[id]` | **Live Call Theatre** | **45%** |
-| `/ops/simulator` | Scenario control | — |
+| Route | Screen |
+|---|---|
+| `/` | Landing — nine sections: floating nav, hero with the call ribbon, "The inventory record is not *the commitment*", how it works, guardrails, the result, safety, FAQ, closing call to action |
+| `/ops` | **Orders board** — five metrics, the coordination queue with a fulfilment bar per order, and the follow-ups panel |
+| `/ops/simulator` | **New order** — the business-event form (validated with Zod) and, in mock mode, the supplier behaviour |
+| `/ops/orders/[id]` | **Order call screen** — on camera for most of the demo |
 
-### The Live Call Theatre
+### The order call screen
 
-The screen that is on camera for 60 of the demo's 180 seconds. Layout follows §4.1 and is pinned to the viewport at 1440×900 so **the structured-result strip never leaves the screen**; regions scroll internally instead.
+Pinned to the viewport from 1280 px wide (the demo runs at 1440 × 900), so **the structured-result strip never leaves the screen**; regions scroll inside. Below 1280 px it becomes two columns with the conversation full width beneath, and the page scrolls.
 
 | Region | Component | Carries |
 |---|---|---|
-| Header | `IncidentHeader` | Asset, severity, draining safe-window clock, trace ID, connection status |
-| Column A | `SignalColumn` | 3D facility, telemetry curve, call activity |
-| Column B | `ReasoningColumn` | Responder, escalation ladder, agent timeline |
-| Column C | `ConversationColumn` | Call plan → live transcript (or the suppression case) |
-| Outcome | `IncidentOutcome` | Closing state and human time saved |
-| Payoff | `StructuredResult` | Typed extraction, confidence, evidence |
+| Header | `OrderHeader` | Reference, buyer → seller, status and urgency, the required-by countdown, trace ID, connection |
+| Banner | `ApprovalBanner` / `SuppressionBanner` | Old → new price with Approve and Reject; or why no call was placed |
+| Column A | `OrderColumn` | Quantity, price, required-by, the fulfilment bar, why this call, call activity |
+| Column B | `ReasoningColumn` | The contact, the contact ladder with its cap, the agent timeline |
+| Column C | `ConversationColumn` | Call plan → live transcript, or the suppression case |
+| Outcome | `OrderOutcome` | The closing state, the next follow-up, operator time saved |
+| Payoff | `StructuredResult` | Confidence against the 0.70 floor, the quantity split, the typed fields with their evidence |
 
-**Details that carry the most weight** (§12, ranked):
+**Details that carry the most weight:**
 
-1. **Evidence highlighting** — when extraction lands, the exact phrases CALL-E cited are marked *in place* in the transcript. Nothing else proves as cheaply that the extraction is not hallucinated.
-2. **The escalation ladder travelling** on refusal — one animation that makes an autonomous decision legible.
-3. **The human-review threshold drawn on the confidence bar** — the system showing it knows what it does not know.
-4. **A live time-saved counter** — the technical demo connected to a business number.
-5. **Honest connection status** — `● Reconnecting…` rather than a silently frozen UI.
-6. **The suppression case** — a suppressed incident gets its own panels rather than call panels reading "no conversation *yet*". Nothing is coming, and an empty state that implies otherwise is a small lie the UI does not need to tell.
+1. **Evidence highlighting** — the exact phrases CALL-E cited are marked in the transcript, and each field says whether it is evidence-backed or inferred. Numbers are matched as digits or words ("120" or "one hundred twenty"), and "today" or "tomorrow morning" are matched as said.
+2. **The quantity split** — "120 / 200 cases secured" over a two-part bar. The whole idea, in one figure.
+3. **The review floor drawn on the confidence bar** — and obeyed everywhere: below 0.70 the split reads "claimed", the ladder reads "Unclear · review", and nothing is counted as confirmed.
+4. **The approval banner** — persistent, never a toast; the agent cannot accept a changed price, and the screen says so.
+5. **Honest connection status** — `Reconnecting…` rather than a silently frozen screen.
+6. **The suppression case** — a duplicate order gets its own panels, rather than call panels reading "no conversation *yet*".
 
 ### Every screen, every state
 
-All five states are implemented on every screen: **empty · loading · success · error · partial**. Loading uses skeletons shaped like the real content — never a centred spinner, which causes layout shift when content arrives.
+All five states exist on every screen: **empty · loading · success · error · partial**. Loading uses skeletons in the shape of the real content, never a centred spinner.
 
 ---
 
-## 8. The 3D layer
+## 8. Accessibility and QA
 
-React Three Fiber, scoped hard per §5.
-
-**Justification:** a unit failing in Zone A while the technician is in Sector 7 is a spatial fact, and spatial facts read faster in 3D than in a table. If it stops communicating state faster than a 2D card, it gets cut.
-
-- Extruded boxes, severity-coloured, pulse rate encoding urgency. No PBR, no physics, no post-processing.
-- Colours are read from the CSS custom properties at runtime, so the 3D layer obeys the same token contract as the DOM and follows the light/dark switch.
-- The camera solves its distance from the facility bounds and the panel's actual aspect ratio, so one component frames correctly in both the wide overview and the narrow theatre column.
-- **Lazy-loaded** via `next/dynamic` with `ssr: false`. It never blocks first paint.
-- **Degrades to a 2D floor plan** on a toggle, persisted per operator — which is also the documented fallback if the recording machine drops below 60fps.
-
----
-
-## 9. Accessibility and QA
-
-Current status against the §8.1 checklist:
-
-- [x] All five states implemented on every built screen
-- [x] No dead buttons — unbuilt routes render visibly disabled with a stated reason
-- [x] Focus rings visible; transcript and timeline are keyboard-reachable regions
-- [x] All state conveyed by colour **+ icon + text**
-- [x] `prefers-reduced-motion` respected; loops stop entirely
-- [x] Responsive at 1440 (demo), 1024, 768, and 390 — no horizontal page scroll at any width
-- [x] `tabular-nums` on every changing value
-- [x] Cold start with an empty store looks intentional
-- [x] 3D lazy-loaded and degrades to 2D
-- [ ] Contrast audit with a measuring tool (spot-checked only)
+- [x] All five states on every screen
+- [x] No dead buttons — unbuilt routes render visibly disabled with a reason
+- [x] Focus rings visible; the transcript and timeline are keyboard-reachable regions
+- [x] Every state is colour **+ icon + text**
+- [x] Text contrast ≥ 4.5:1 on cream, verified per token
+- [x] `prefers-reduced-motion` stops every loop
+- [x] No horizontal page scroll at 1440, 1280, 1024, 768 and 390
+- [x] Tabular figures on every changing value
+- [x] A cold start looks intentional (seeded history)
+- [ ] Contrast audit with a measuring tool across the dark theme (spot-checked only)
 - [ ] Lighthouse run on a production build
 - [ ] Tested on the exact machine and browser used for recording
 
 ### Performance notes
 
-- The waveform is a single `<canvas>`, not 68 animated DOM nodes.
-- The canvas is absolutely positioned inside a relative box. As a replaced element its intrinsic size sets `min-height: auto`, so a plain `flex-1` canvas cannot shrink below the pixel height assigned to it and slowly grows out of its panel.
-- The incident feed polls on an activity-dependent interval (2s busy / 8s idle) rather than a fixed timer.
-- Browser-only state is read with `useSyncExternalStore`, not a mount-time `setState`, so no screen cascades an extra render before first paint.
+- The waveform is one `<canvas>`, not dozens of animated DOM nodes.
+- The feed polls on an activity-dependent interval rather than a fixed timer.
+- Browser-only state is read with `useSyncExternalStore`, not a mount-time `setState`, so no screen renders twice before first paint.
 
 ---
 
-## 10. Deliberate deviations
-
-Three choices differ from the letter of the spec. Each is a judgement call and is open to being reversed.
+## 9. Deliberate deviations
 
 | Spec | What was built | Why |
 |---|---|---|
-| recharts | Hand-drawn SVG telemetry curve | The instrument look — shaded safe band, dashed ceiling, right-rail ticks, breathing head marker — fights a chart library's defaults the whole way. ~90 lines and no bundle cost. |
-| shadcn/ui | Hand-built primitives with `cva` + `tailwind-merge` | Same ownership model the spec wants from shadcn (copy-in, no version lock), following the same file conventions, without theme-fighting a component library that would be restyled to nothing anyway. |
-| Per-field confidence badge (§4.5) | One call-level confidence + per-field **evidence provenance** | CALL-E returns one `completionConfidence`; it is call-level. Inventing a score per field to fill the layout would be fabricating a confidence value, which Rule 8 forbids. Evidence-backed vs inferred is a real, checkable property — and it does the §12 #1 job better. |
+| Shared types in `packages/types` | Dashboard-local contracts | The agent and its tests still import the v1 incident types. Changing them under the owners would break their work; the contract document is the migration path. |
+| shadcn/ui | Hand-built primitives with `cva` + `tailwind-merge` | The same copy-in ownership model, without restyling a component library to nothing. |
+| Per-field confidence badge | One call-level confidence + per-field **evidence provenance** | CALL-E returns one `completionConfidence` per call. Inventing a score per field would be fabricating a confidence value. Evidence-backed vs inferred is a real, checkable property. |
 
 ---
 
-## 11. Not built in this pass
+## 10. Not built in this pass
 
-Scoped out deliberately. Present in the nav as **visibly disabled with a reason**, per the rule that a settings page full of non-functional switches is worse than no settings page.
+Present in the navigation as **visibly disabled with a reason**:
 
-- `/ops/history` and `/ops/history/[id]` — incident history and one-click replay (P1)
-- `/ops/roster` — responder roster and ladder configuration (P2)
-- `/ops/assets` — asset and threshold configuration (P2)
-- ⌘K command palette (P2)
-
-The event contract already carries everything history needs; it is a screen, not a data problem.
+- **History** — past orders with replay. The event contract already carries everything it needs; it is a screen, not a data problem.
+- **Contacts** — the contact directory and ladder configuration.
+- A ⌘K command palette.

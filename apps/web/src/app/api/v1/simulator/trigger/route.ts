@@ -1,38 +1,59 @@
 import { NextResponse } from "next/server";
+import { z } from "zod";
 import { isKillSwitchEngaged, resetToSeed, trigger } from "@/lib/mock/store";
 import { SCENARIOS } from "@/lib/mock/scenarios";
 
 export const dynamic = "force-dynamic";
 
-/** CLAUDE.md §8.2 — GET the scenario catalogue for the simulator screen. */
+/** GET — the supplier behaviours the simulator can play, and the kill-switch state. */
 export async function GET() {
   return NextResponse.json({
-    scenarios: SCENARIOS.map((s) => ({
-      id: s.id,
-      name: s.name,
-      tagline: s.tagline,
-      description: s.description,
-      assetId: s.assetId,
-      severity: s.severity,
-      expectedOutcome: s.expectedOutcome,
+    scenarios: SCENARIOS.map(({ id, name, tagline, description, expectedOutcome }) => ({
+      id,
+      name,
+      tagline,
+      description,
+      expectedOutcome,
     })),
     killSwitch: isKillSwitchEngaged(),
   });
 }
 
-/** CLAUDE.md §8.2 — POST /api/v1/simulator/trigger */
+/** The order the operator entered. Validated here — the boundary — never trusted. */
+const OrderInput = z.object({
+  reference: z
+    .string()
+    .trim()
+    .min(3)
+    .max(24)
+    .regex(/^[A-Za-z0-9][A-Za-z0-9-]*$/, "Letters, digits and hyphens only"),
+  description: z.string().trim().min(3).max(80),
+  unit: z.string().trim().min(1).max(16),
+  quantity: z.number().int().min(1).max(100_000),
+  requiredBy: z.iso.datetime(),
+  triggerType: z.enum(["ORDER", "INVENTORY", "DELIVERY", "EXCEPTION", "IOT"]),
+});
+
+const Body = z.union([
+  z.object({ action: z.literal("reset") }),
+  z.object({ scenarioId: z.string(), order: OrderInput }),
+]);
+
+/** POST — start a scenario for an order, or reset to the seeded history. */
 export async function POST(request: Request) {
-  let body: { scenarioId?: string; action?: string };
-  try {
-    body = await request.json();
-  } catch {
+  const parsed = Body.safeParse(await request.json().catch(() => null));
+  if (!parsed.success) {
+    const issue = parsed.error.issues[0];
     return NextResponse.json(
-      { error: "bad_request", message: "Expected a JSON body" },
+      {
+        error: "bad_request",
+        message: issue ? `${issue.path.join(".") || "body"}: ${issue.message}` : "Invalid request",
+      },
       { status: 400 },
     );
   }
 
-  if (body.action === "reset") {
+  if ("action" in parsed.data) {
     resetToSeed();
     return NextResponse.json({ ok: true, action: "reset" });
   }
@@ -41,24 +62,20 @@ export async function POST(request: Request) {
     return NextResponse.json(
       {
         error: "kill_switch_engaged",
-        message:
-          "Outbound calling is halted. Release the kill switch before triggering a scenario.",
+        message: "Outbound calling is halted. Release the kill switch before placing a call.",
       },
       { status: 423 },
     );
   }
 
-  const scenarioId = body.scenarioId;
-  if (!scenarioId || !SCENARIOS.some((s) => s.id === scenarioId)) {
+  const { scenarioId, order } = parsed.data;
+  if (!SCENARIOS.some((s) => s.id === scenarioId)) {
     return NextResponse.json(
-      { error: "unknown_scenario", message: `No scenario “${scenarioId ?? ""}”` },
+      { error: "unknown_scenario", message: `No scenario “${scenarioId}”` },
       { status: 400 },
     );
   }
 
-  const run = trigger(scenarioId);
-  return NextResponse.json({
-    incidentId: run.incident.id,
-    traceId: run.incident.traceId,
-  });
+  const run = trigger(scenarioId, { ...order, reference: order.reference.toUpperCase() });
+  return NextResponse.json({ orderId: run.order.id, traceId: run.order.traceId });
 }
