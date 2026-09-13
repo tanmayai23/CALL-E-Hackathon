@@ -67,7 +67,7 @@ export function MetricsRail({ stats }: { stats: FacilityStats | null }) {
   return (
     <div className="grid grid-cols-2 gap-px overflow-hidden rounded-md border border-line bg-line sm:grid-cols-3 lg:grid-cols-5">
       <Metric
-        label="Active incidents"
+        label="Active requests"
         value={show(stats?.active ?? 0)}
         hint="open or calling"
         icon={Activity}
@@ -81,20 +81,20 @@ export function MetricsRail({ stats }: { stats: FacilityStats | null }) {
         tone={tone(Boolean(stats?.calling), "var(--state-active)")}
       />
       <Metric
-        label="Needs a human"
+        label="Needs review"
         value={show(stats?.attention ?? 0)}
         hint="low confidence or unresolved"
         icon={ShieldOff}
         tone={tone(Boolean(stats?.attention), "var(--state-critical)")}
       />
       <Metric
-        label="Suppressed"
+        label="Suppressed requests"
         value={show(stats?.suppressed ?? 0)}
         hint="noise the agent did not call about"
         icon={TrendingDown}
       />
       <Metric
-        label="Human time saved"
+        label="Operator time saved"
         value={stats ? formatMinutes(stats.savedMinutes) : "—"}
         hint="vs. manual coordination"
         icon={Timer}

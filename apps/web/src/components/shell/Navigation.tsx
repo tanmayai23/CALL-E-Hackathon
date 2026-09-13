@@ -33,7 +33,7 @@ interface NavRoute {
 }
 
 export const NAV_ROUTES: NavRoute[] = [
-  { href: "/ops", label: "Incident Command", icon: Activity, built: true },
+  { href: "/ops", label: "Operations", icon: Activity, built: true },
   { href: "/ops/simulator", label: "Simulator", icon: SlidersHorizontal, built: true },
   { href: "/ops/history", label: "History", icon: History, built: false },
   { href: "/ops/roster", label: "Roster", icon: Users, built: false },

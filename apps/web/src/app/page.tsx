@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowRight, PhoneCall, Radio, SlidersHorizontal } from "lucide-react";
+import { ArrowRight, Check, Clock3, PackageCheck, PhoneCall, Radio, SlidersHorizontal } from "lucide-react";
 import { StateChip } from "@/components/ui/StateChip";
 import { buttonStyles } from "@/components/ui/Button";
 import { cn } from "@/lib/utils";
@@ -10,80 +10,43 @@ import { cn } from "@/lib/utils";
  * screen: the sentence, the chain, the way in. No scroll, no marketing.
  */
 
-const CHAIN = [
-  { label: "Signal", detail: "MQTT · webhook" },
-  { label: "Reasoning", detail: "correlate · suppress" },
-  { label: "Decision", detail: "severity · responder" },
-  { label: "Phone call", detail: "CALL-E" },
-  { label: "Negotiation", detail: "commitment · ETA" },
-  { label: "Structured data", detail: "typed · confidence-scored" },
-];
-
 export default function LandingPage() {
   return (
     <main className="grain grid-field relative flex min-h-dvh flex-col overflow-hidden">
       {/* Header rule */}
-      <header className="relative z-10 flex items-center justify-between border-b border-line px-6 py-4 sm:px-10">
+      <header className="relative z-10 flex items-center justify-between border-b border-line-strong/70 bg-panel/45 px-6 py-5 backdrop-blur-sm sm:px-10">
         <div className="flex items-baseline gap-3">
-          <span className="data-value text-sm font-semibold tracking-tight text-ink">
+          <span className="data-value text-sm font-semibold tracking-tight text-ink sm:text-base">
             SENTINEL OPS
           </span>
-          <span className="micro hidden sm:inline">Northgate Cold Chain</span>
+          <span className="micro hidden text-state-active sm:inline">Northgate Distribution</span>
         </div>
         <StateChip state="idle" icon={Radio} size="sm">
           Standing by
         </StateChip>
       </header>
 
-      <div className="relative z-10 flex flex-1 flex-col justify-center px-6 py-14 sm:px-10">
-        <div className="mx-auto w-full max-w-[1100px]">
-          {/* The sentence */}
-          <p className="micro mb-6">Autonomous incident escalation</p>
+      <div className="relative z-10 flex flex-1 items-center px-6 py-12 sm:px-10 sm:py-16 lg:py-20">
+        <div className="mx-auto grid w-full max-w-[1180px] items-center gap-12 lg:grid-cols-[minmax(0,1fr)_380px] lg:gap-20">
+          <section>
+            <p className="micro mb-7">Autonomous wholesale coordination</p>
 
-          <h1 className="max-w-[18ch] text-[clamp(32px,6.2vw,48px)] font-semibold leading-[1.04] tracking-[-0.03em] text-ink">
-            Nobody picks up
-            <br />a dashboard.
-          </h1>
+            <h1 className="max-w-[12ch] text-[clamp(40px,6vw,72px)] font-semibold leading-[0.98] tracking-[-0.04em] text-ink">
+              Wholesale calls.
+              <br />Closed loops.
+            </h1>
 
-          <p className="mt-6 max-w-[62ch] text-base leading-relaxed text-ink-dim">
-            At 2 AM a cold-storage unit starts failing. The alert fires into an empty room.
-            Sentinel Ops decides the failure genuinely needs a human, then{" "}
-            <span className="text-ink">phones the one who can fix it</span> — holds the
-            conversation, refuses to take <span className="text-ink">no</span> for an answer,
-            and writes the negotiated commitment back as typed data.
-          </p>
+            <p className="mt-8 max-w-[56ch] text-base leading-relaxed text-ink-dim sm:text-lg">
+              When a distributor needs a real answer, Sentinel Ops calls the wholesaler, negotiates
+              stock and dispatch, then writes the commitment back to the order.
+            </p>
 
-          {/* The chain, as an instrument scale rather than a marketing diagram */}
-          <ol className="mt-12 grid grid-cols-2 gap-px border border-line bg-line sm:grid-cols-3 lg:grid-cols-6">
-            {CHAIN.map((step, i) => (
-              <li
-                key={step.label}
-                className="group relative flex flex-col justify-between gap-6 bg-panel px-4 py-4"
-              >
-                <span className="micro">{String(i + 1).padStart(2, "0")}</span>
-                <span>
-                  <span className="block text-sm font-medium text-ink">{step.label}</span>
-                  <span className="data-value mt-1 block text-xs text-ink-faint">
-                    {step.detail}
-                  </span>
-                </span>
-                {i === 3 && (
-                  <span
-                    aria-hidden
-                    className="absolute right-3 top-3 h-1.5 w-1.5 rounded-full bg-state-active"
-                  />
-                )}
-              </li>
-            ))}
-          </ol>
-
-          {/* Ways in */}
-          <div className="mt-10 flex flex-wrap items-center gap-3">
+            <div className="mt-10 flex flex-wrap items-center gap-3">
             <Link
               href="/ops"
               className={cn(buttonStyles({ variant: "primary", size: "lg" }), "group")}
             >
-              Open Incident Command
+              Open Operations
               <ArrowRight className="h-4 w-4 transition-transform duration-150 group-hover:translate-x-0.5" />
             </Link>
             <Link
@@ -93,28 +56,88 @@ export default function LandingPage() {
               <SlidersHorizontal className="h-4 w-4" />
               Run a scenario
             </Link>
-          </div>
+            </div>
+
+            <dl className="mt-12 grid max-w-[560px] grid-cols-3 gap-6 border-t border-line pt-5">
+              <div>
+                <dt className="micro">Confirmation</dt>
+                <dd className="data-value mt-2 text-lg text-ink">&lt; 3 min</dd>
+              </div>
+              <div>
+                <dt className="micro">Operator effort</dt>
+                <dd className="data-value mt-2 text-lg text-ink">0 min</dd>
+              </div>
+              <div>
+                <dt className="micro">Output</dt>
+                <dd className="data-value mt-2 text-lg text-ink">Typed</dd>
+              </div>
+            </dl>
+          </section>
+
+          <aside className="border border-line bg-panel/90 p-5 shadow-2xl shadow-black/20 sm:p-6">
+            <div className="flex items-start justify-between border-b border-line pb-5">
+              <div>
+                <p className="micro">Live coordination</p>
+                <p className="data-value mt-2 text-sm text-ink">Order ORD-482</p>
+              </div>
+              <StateChip state="active" icon={PhoneCall} size="sm" pulse>
+                Calling
+              </StateChip>
+            </div>
+
+            <div className="space-y-5 py-6">
+              <div>
+                <p className="micro">Distributor</p>
+                <p className="mt-1 text-sm text-ink">Northgate Distributors</p>
+              </div>
+              <div className="flex items-center gap-3 text-ink-faint" aria-hidden>
+                <span className="h-px flex-1 bg-line-strong" />
+                <ArrowRight className="h-3.5 w-3.5" />
+                <span className="h-px flex-1 bg-line-strong" />
+              </div>
+              <div>
+                <p className="micro">Wholesaler</p>
+                <p className="mt-1 text-sm text-ink">Metro Supply Co.</p>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="border border-line bg-base/60 p-3">
+                  <PackageCheck className="h-4 w-4 text-state-active" aria-hidden />
+                  <p className="micro mt-4">Confirmed</p>
+                  <p className="data-value mt-1 text-lg text-ink">120 cases</p>
+                </div>
+                <div className="border border-line bg-base/60 p-3">
+                  <Clock3 className="h-4 w-4 text-state-warning" aria-hidden />
+                  <p className="micro mt-4">Remaining</p>
+                  <p className="data-value mt-1 text-lg text-ink">80 tomorrow</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="border-t border-line pt-5">
+              <p className="micro mb-3">Workflow</p>
+              <ol className="space-y-3">
+                {["Contact selected", "Stock negotiated", "Order update ready"].map((step) => (
+                  <li key={step} className="flex items-center gap-2.5 text-xs text-ink-dim">
+                    <span className="flex h-4 w-4 items-center justify-center rounded-full bg-state-active/15 text-state-active">
+                      <Check className="h-3 w-3" aria-hidden />
+                    </span>
+                    {step}
+                  </li>
+                ))}
+              </ol>
+            </div>
+          </aside>
         </div>
       </div>
 
       {/* Footer rule — the claim, quantified */}
-      <footer className="relative z-10 border-t border-line px-6 py-4 sm:px-10">
-        <dl className="mx-auto flex w-full max-w-[1100px] flex-wrap items-center gap-x-8 gap-y-2">
-          {[
-            ["Alert → human commitment", "< 3 min"],
-            ["Operator effort, happy path", "0 min"],
-            ["Escalation rungs", "3"],
-            ["Extraction", "typed + confidence-scored"],
-          ].map(([label, value]) => (
-            <div key={label} className="flex items-baseline gap-2">
-              <dt className="micro">{label}</dt>
-              <dd className="data-value text-xs text-ink">{value}</dd>
-            </div>
-          ))}
-          <div className="ml-auto flex items-center gap-2">
-            <PhoneCall className="h-3 w-3 text-ink-faint" aria-hidden />
-            <span className="micro">Built on CALL-E</span>
+      <footer className="relative z-10 border-t border-line-strong/70 bg-panel/45 px-6 py-5 backdrop-blur-sm sm:px-10">
+        <dl className="mx-auto flex w-full max-w-[1180px] items-center justify-between gap-4">
+          <div className="flex items-center gap-2">
+            <Radio className="h-3 w-3 text-state-active" aria-hidden />
+            <dt className="micro">CALL-E runtime</dt>
           </div>
+          <dd className="micro text-ink-faint">Human confirmation, structured automatically</dd>
         </dl>
       </footer>
     </main>

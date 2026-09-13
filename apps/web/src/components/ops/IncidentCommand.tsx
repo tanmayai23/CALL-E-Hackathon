@@ -15,8 +15,6 @@ import type { Incident } from "@/lib/contracts/domain";
 import { useIncidentFeed } from "@/hooks/useIncidentFeed";
 import { Panel, EmptyState, Skeleton } from "@/components/ui/Panel";
 import { Button, buttonStyles } from "@/components/ui/Button";
-import { FacilityStage } from "@/components/three/FacilityStage";
-import { ASSETS } from "@/lib/mock/facility";
 import { cn } from "@/lib/utils";
 import { IncidentRow } from "./IncidentRow";
 import { MetricsRail, summarise } from "./MetricsRail";
@@ -26,7 +24,7 @@ type Filter = "all" | "live" | "attention" | "closed";
 const FILTERS: Array<{ id: Filter; label: string }> = [
   { id: "all", label: "All" },
   { id: "live", label: "Live" },
-  { id: "attention", label: "Needs attention" },
+  { id: "attention", label: "Needs review" },
   { id: "closed", label: "Closed" },
 ];
 
@@ -43,21 +41,6 @@ function matches(incident: Incident, filter: Filter): boolean {
   }
 }
 
-/** Assets carry their live reading only while they are in trouble. */
-function buildMarkers(incidents: Incident[]) {
-  return ASSETS.map((asset) => {
-    const open = incidents.find(
-      (i) => i.asset.id === asset.id && (i.status === "OPEN" || i.status === "CALLING"),
-    );
-    return {
-      asset,
-      severity: open ? open.severity : ("NOMINAL" as const),
-      value: open ? open.reading.value : (asset.safeMin + asset.safeMax) / 2,
-      unit: asset.unit,
-    };
-  });
-}
-
 export function IncidentCommand() {
   const { incidents, error, refreshedAt, refresh } = useIncidentFeed();
   const [filter, setFilter] = useState<Filter>("all");
@@ -68,17 +51,13 @@ export function IncidentCommand() {
     [incidents, filter],
   );
 
-  const focused = (incidents ?? []).find(
-    (i) => i.status === "CALLING" || i.status === "OPEN",
-  );
-
   return (
-    <div className="flex flex-col gap-3 p-3">
+    <div className="flex flex-col gap-5 p-5 sm:p-6">
       <MetricsRail stats={stats} />
 
-      <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(320px,420px)]">
+      <div>
         <Panel
-          label="Incident feed"
+          label="Coordination queue"
           bodyClassName="p-0"
           right={
             <div className="flex items-center gap-1">
@@ -130,8 +109,8 @@ export function IncidentCommand() {
               title={filter === "all" ? "No incidents yet" : "Nothing matches this filter"}
               body={
                 filter === "all"
-                  ? "The floor is quiet. Fire a scenario from the simulator to watch a signal become an incident, a call, and a negotiated commitment."
-                  : "Every incident on the floor is in a different state right now. Clear the filter to see them all."
+                  ? "No order requests are waiting. Run a scenario to watch a wholesaler call become a structured commitment."
+                  : "Every request is in a different state right now. Clear the filter to see them all."
               }
               action={
                 filter === "all" ? (
@@ -168,23 +147,6 @@ export function IncidentCommand() {
                 : "—"}
             </span>
           </div>
-        </Panel>
-
-        <Panel
-          label="Northgate floor"
-          brackets
-          className="lg:sticky lg:top-0 lg:self-start"
-          bodyClassName="h-[420px] flex-none p-0"
-          right={
-            <span className="micro">
-              {focused ? `focus ${focused.asset.id}` : "all nominal"}
-            </span>
-          }
-        >
-          <FacilityStage
-            markers={buildMarkers(incidents ?? [])}
-            focusAssetId={focused?.asset.id}
-          />
         </Panel>
       </div>
     </div>
