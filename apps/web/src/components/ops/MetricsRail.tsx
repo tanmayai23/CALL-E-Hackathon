@@ -1,35 +1,35 @@
 "use client";
 
 /**
- * Facility-level metrics — the opening shot's context strip.
+ * The queue in five numbers — the opening shot's context strip.
  *
- * Five numbers that say what the floor is doing right now, ending with the one
- * that connects the technical demo to a business case: human time saved
- * (§12 #4). Every value is `tabular-nums` so a count ticking over does not
- * shift the layout beside it.
+ * What is waiting, what is on the phone, what needs a person, how much stock
+ * the calls have secured, and the operator time they replaced. Figures are set
+ * in the display face with lining, tabular digits so a count ticking over does
+ * not shift anything beside it.
  */
 
-import { Activity, PhoneCall, ShieldOff, Timer, TrendingDown } from "lucide-react";
-import type { Incident } from "@/lib/contracts/domain";
+import { Hourglass, PackageCheck, PhoneCall, Timer, UserSearch } from "lucide-react";
+import type { Order } from "@/lib/contracts/domain";
 import { formatMinutes } from "@/lib/utils";
 
-export interface FacilityStats {
-  active: number;
+export interface QueueStats {
+  awaiting: number;
   calling: number;
-  attention: number;
-  suppressed: number;
-  savedMinutes: number;
+  needsPerson: number;
+  unitsConfirmed: number;
+  minutesSaved: number;
 }
 
-export function summarise(incidents: Incident[]): FacilityStats {
+export function summarise(orders: Order[]): QueueStats {
   return {
-    active: incidents.filter((i) => i.status === "OPEN" || i.status === "CALLING").length,
-    calling: incidents.filter((i) => i.status === "CALLING").length,
-    attention: incidents.filter(
-      (i) => i.status === "HUMAN_REVIEW" || i.status === "UNRESOLVED",
+    awaiting: orders.filter((o) => o.status === "AWAITING_CONFIRMATION" || o.status === "CALLBACK_SCHEDULED").length,
+    calling: orders.filter((o) => o.status === "CALLING").length,
+    needsPerson: orders.filter(
+      (o) => o.status === "APPROVAL_REQUIRED" || o.status === "HUMAN_REVIEW" || o.status === "UNRESOLVED",
     ).length,
-    suppressed: incidents.filter((i) => i.finalOutcome?.startsWith("Suppressed")).length,
-    savedMinutes: incidents.reduce((sum, i) => sum + (i.timeSavedMinutes ?? 0), 0),
+    unitsConfirmed: orders.reduce((sum, o) => sum + (o.item.confirmedQuantity ?? 0), 0),
+    minutesSaved: orders.reduce((sum, o) => sum + (o.operatorMinutesSaved ?? 0), 0),
   };
 }
 
@@ -47,64 +47,63 @@ function Metric({
   tone?: string;
 }) {
   return (
-    <div className="flex min-w-0 flex-col gap-1.5 bg-panel px-4 py-3.5">
+    <div className="flex min-w-0 flex-col gap-2 bg-panel px-5 py-4">
       <span className="micro flex items-center gap-1.5">
-        <Icon className="h-3 w-3" />
+        <Icon className="h-3.5 w-3.5" />
         {label}
       </span>
-      <span className="data-value text-2xl leading-none" style={tone ? { color: tone } : undefined}>
+      <span className="display-num whitespace-nowrap text-3xl" style={{ color: tone ?? "var(--text-primary)" }}>
         {value}
       </span>
-      <span className="text-[11px] leading-tight text-ink-faint">{hint}</span>
+      <span className="text-xs leading-tight text-ink-faint">{hint}</span>
     </div>
   );
 }
 
-export function MetricsRail({ stats }: { stats: FacilityStats | null }) {
-  const show = (n: number) => (stats ? String(n) : "—");
+export function MetricsRail({ stats }: { stats: QueueStats | null }) {
+  const show = (n: number | undefined) => (stats ? String(n ?? 0) : "—");
   const tone = (condition: boolean, token: string) => (condition ? token : undefined);
 
   return (
-    <div className="grid grid-cols-2 gap-px overflow-hidden rounded-md border border-line bg-line sm:grid-cols-3 lg:grid-cols-5">
+    <div className="grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-line bg-line sm:grid-cols-3 xl:grid-cols-5">
       <Metric
-        label="Active requests"
-        value={show(stats?.active ?? 0)}
-        hint="open or calling"
-        icon={Activity}
-        tone={tone(Boolean(stats?.active), "var(--state-warning)")}
+        label="Awaiting"
+        value={show(stats?.awaiting)}
+        hint="waiting on a supplier answer"
+        icon={Hourglass}
+        tone={tone(Boolean(stats?.awaiting), "var(--state-warning)")}
       />
       <Metric
-        label="Calls in flight"
-        value={show(stats?.calling ?? 0)}
-        hint="agent on the phone"
+        label="On the phone"
+        value={show(stats?.calling)}
+        hint="calls in progress"
         icon={PhoneCall}
         tone={tone(Boolean(stats?.calling), "var(--state-active)")}
       />
       <Metric
-        label="Needs review"
-        value={show(stats?.attention ?? 0)}
-        hint="low confidence or unresolved"
-        icon={ShieldOff}
-        tone={tone(Boolean(stats?.attention), "var(--state-critical)")}
+        label="Needs a person"
+        value={show(stats?.needsPerson)}
+        hint="approval, review or unresolved"
+        icon={UserSearch}
+        tone={tone(Boolean(stats?.needsPerson), "var(--state-info)")}
       />
       <Metric
-        label="Suppressed requests"
-        value={show(stats?.suppressed ?? 0)}
-        hint="noise the agent did not call about"
-        icon={TrendingDown}
+        label="Units confirmed"
+        value={show(stats?.unitsConfirmed)}
+        hint="secured on calls today"
+        icon={PackageCheck}
+        tone={tone(Boolean(stats?.unitsConfirmed), "var(--state-success)")}
       />
       <Metric
         label="Operator time saved"
-        value={stats ? formatMinutes(stats.savedMinutes) : "—"}
-        hint="vs. manual coordination"
+        value={stats ? formatMinutes(stats.minutesSaved) : "—"}
+        hint="vs. calling by hand"
         icon={Timer}
-        tone={tone(Boolean(stats?.savedMinutes), "var(--state-success)")}
       />
 
       {/* Five metrics in a two- or three-up grid leave a hole. Blank it on
-          purpose so it reads as instrument panelling rather than a panel that
-          failed to load. */}
-      <div className="hatch bg-panel lg:hidden" aria-hidden />
+          purpose so it reads as a composed grid, not a panel that failed. */}
+      <div className="hatch bg-panel xl:hidden" aria-hidden />
     </div>
   );
 }

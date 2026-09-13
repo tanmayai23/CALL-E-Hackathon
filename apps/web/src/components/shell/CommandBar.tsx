@@ -17,17 +17,11 @@ import { Button } from "@/components/ui/Button";
 import { apiGet, apiPost, IS_MOCK } from "@/lib/api";
 import { isSoundEnabled, setSoundEnabled } from "@/lib/sound";
 import { useClientValue, useNow } from "@/hooks/useClientValue";
-import { FACILITY } from "@/lib/mock/facility";
+import { BUYER, WORKING_HOURS } from "@/lib/mock/directory";
+import { formatters } from "@/lib/time";
+import { BrandMark } from "@/components/ui/BrandMark";
 
 const THEME_STORAGE_KEY = "sentinel.theme";
-
-const CLOCK_FORMAT = new Intl.DateTimeFormat("en-GB", {
-  hour: "2-digit",
-  minute: "2-digit",
-  second: "2-digit",
-  hour12: false,
-  timeZone: FACILITY.timezone,
-});
 
 /** Module scope keeps the reader stable for useSyncExternalStore. */
 function readTheme(): "dark" | "light" {
@@ -36,7 +30,7 @@ function readTheme(): "dark" | "light" {
 
 function FacilityClock() {
   const ms = useNow(1000);
-  const now = ms == null ? null : CLOCK_FORMAT.format(new Date(ms));
+  const now = ms == null ? null : formatters.clock.format(new Date(ms));
 
   return (
     <span className="data-value text-xs text-ink-dim" suppressHydrationWarning>
@@ -116,21 +110,17 @@ export function CommandBar({ killSwitch }: { killSwitch: KillSwitchState }) {
   }, [sound]);
 
   return (
-    <header className="sticky top-0 z-30 flex h-14 shrink-0 items-center gap-4 border-b border-line bg-base/95 px-4 backdrop-blur-sm">
-      <Link href="/" className="flex items-baseline gap-2.5">
-        <span className="data-value whitespace-nowrap text-sm font-semibold tracking-tight text-ink">
-          SENTINEL OPS
-        </span>
+    <header className="sticky top-0 z-30 flex h-14 shrink-0 items-center gap-4 border-b border-line bg-canvas/90 px-5 backdrop-blur-sm">
+      <Link href="/" aria-label="Sentinel Ops home">
+        <BrandMark />
       </Link>
 
       <span className="hidden h-4 w-px bg-line sm:block" aria-hidden />
 
       <div className="hidden min-w-0 flex-col lg:flex">
-        <span className="truncate text-xs font-medium leading-tight text-ink">
-          {FACILITY.name}
-        </span>
+        <span className="truncate text-xs font-semibold leading-tight text-ink">{BUYER.name}</span>
         <span className="micro leading-tight">
-          {FACILITY.timezone} · quiet hours {FACILITY.quietHoursStart}–{FACILITY.quietHoursEnd}
+          Operations · working hours {WORKING_HOURS.start}–{WORKING_HOURS.end} IST
         </span>
       </div>
 

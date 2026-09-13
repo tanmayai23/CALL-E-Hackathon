@@ -1,7 +1,7 @@
-import { SimulatorConsole } from "@/components/ops/SimulatorConsole";
+import { NewOrderConsole } from "@/components/ops/NewOrderConsole";
 
-export const metadata = { title: "Simulator — Sentinel Ops" };
+export const metadata = { title: "New order — Sentinel Ops" };
 
 export default function SimulatorPage() {
-  return <SimulatorConsole />;
+  return <NewOrderConsole />;
 }

@@ -9,7 +9,7 @@
 import { useState } from "react";
 import { ChevronDown, ListChecks } from "lucide-react";
 import { motion, useReducedMotion } from "framer-motion";
-import type { CallPlan as CallPlanType } from "@/hooks/useIncidentStream";
+import type { CallPlan as CallPlanType } from "@/hooks/useOrderStream";
 import { EmptyState } from "@/components/ui/Panel";
 import { T, riseIn } from "@/lib/motion";
 import { cn } from "@/lib/utils";
@@ -69,7 +69,7 @@ export function CallPlan({ plan }: { plan: CallPlanType | null }) {
         compact
         icon={ListChecks}
         title="No call plan yet"
-        body="The task prompt is composed per call from severity, responder and escalation rung — urgency language changes at each rung. It appears here before the number is dialled."
+        body="The call prompt is composed for every order and contact — order number, quantity, required date and the questions to ask. It appears here before the number is dialled."
       />
     );
   }
@@ -96,8 +96,8 @@ export function CallPlan({ plan }: { plan: CallPlanType | null }) {
       </div>
 
       <p className="micro border-t border-line pt-2.5">
-        Stop conditions · clear yes with ETA · clear no with reason · two non-answers → human
-        review
+        Stop conditions · a quantity and date · a clear no with a reason · a changed price →
+        approval · two non-answers → human review
       </p>
     </motion.div>
   );

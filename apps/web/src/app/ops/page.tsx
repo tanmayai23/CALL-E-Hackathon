@@ -1,7 +1,7 @@
-import { IncidentCommand } from "@/components/ops/IncidentCommand";
+import { OrdersBoard } from "@/components/ops/OrdersBoard";
 
-export const metadata = { title: "Operations — Sentinel Ops" };
+export const metadata = { title: "Orders — Sentinel Ops" };
 
 export default function OpsPage() {
-  return <IncidentCommand />;
+  return <OrdersBoard />;
 }

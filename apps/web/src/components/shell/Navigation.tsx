@@ -15,14 +15,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import {
-  Activity,
-  Boxes,
-  History,
-  SlidersHorizontal,
-  Users,
-  type LucideIcon,
-} from "lucide-react";
+import { History, LayoutList, PhoneOutgoing, Users, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface NavRoute {
@@ -33,11 +26,10 @@ interface NavRoute {
 }
 
 export const NAV_ROUTES: NavRoute[] = [
-  { href: "/ops", label: "Operations", icon: Activity, built: true },
-  { href: "/ops/simulator", label: "Simulator", icon: SlidersHorizontal, built: true },
+  { href: "/ops", label: "Orders", icon: LayoutList, built: true },
+  { href: "/ops/simulator", label: "New order", icon: PhoneOutgoing, built: true },
   { href: "/ops/history", label: "History", icon: History, built: false },
-  { href: "/ops/roster", label: "Roster", icon: Users, built: false },
-  { href: "/ops/assets", label: "Assets", icon: Boxes, built: false },
+  { href: "/ops/contacts", label: "Contacts", icon: Users, built: false },
 ];
 
 const NOT_BUILT = "Not in this build — scoped out of the P0 pass";
@@ -58,8 +50,8 @@ function NavItem({
   const Icon = route.icon;
   const shared =
     orientation === "rail"
-      ? "flex items-center gap-2.5 rounded-sm px-2.5 py-2 text-xs"
-      : "flex shrink-0 items-center gap-1.5 rounded-sm px-2.5 py-1.5 text-xs";
+      ? "flex items-center gap-2.5 rounded-md px-3 py-2 text-sm"
+      : "flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-xs";
   const iconSize = orientation === "rail" ? "h-4 w-4" : "h-3.5 w-3.5";
 
   if (!route.built) {
@@ -72,7 +64,7 @@ function NavItem({
         <Icon className={cn(iconSize, "shrink-0")} aria-hidden />
         <span className="truncate">{route.label}</span>
         {orientation === "rail" && (
-          <span className="micro ml-auto shrink-0 text-[9px]">soon</span>
+          <span className="micro ml-auto shrink-0">soon</span>
         )}
       </span>
     );
@@ -85,10 +77,12 @@ function NavItem({
       className={cn(
         shared,
         "transition-colors",
-        active ? "bg-elevated text-ink" : "text-ink-dim hover:bg-elevated hover:text-ink",
+        active
+          ? "bg-lilac font-semibold text-on-lilac"
+          : "text-ink-dim hover:bg-stone/60 hover:text-ink",
       )}
     >
-      <Icon className={cn(iconSize, "shrink-0", active && "text-state-active")} aria-hidden />
+      <Icon className={cn(iconSize, "shrink-0")} aria-hidden />
       <span className="truncate">{route.label}</span>
     </Link>
   );
@@ -101,7 +95,7 @@ export function NavRail() {
   return (
     <nav
       aria-label="Sections"
-      className="hidden w-[188px] shrink-0 flex-col gap-0.5 overflow-y-auto border-r border-line px-2 py-3 lg:flex"
+      className="hidden w-[208px] shrink-0 flex-col gap-1 overflow-y-auto border-r border-line px-3 py-4 lg:flex"
     >
       {NAV_ROUTES.map((route) => (
         <NavItem
@@ -112,10 +106,11 @@ export function NavRail() {
         />
       ))}
 
-      <div className="mt-auto space-y-2 px-2.5 pt-4">
+      <div className="mt-auto space-y-2 rounded-lg bg-stone/50 p-3">
         <p className="micro">Safety</p>
-        <p className="text-[11px] leading-relaxed text-ink-faint">
-          Consented roster only. Quiet hours enforced per facility; only CRITICAL overrides.
+        <p className="text-xs leading-relaxed text-ink-dim">
+          Consented business contacts only, within working hours. Prices, credit and terms are never
+          accepted by the agent.
         </p>
       </div>
     </nav>

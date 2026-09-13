@@ -36,7 +36,7 @@ export function ConfidenceHeader({
   const needsReview = confidence.score < HUMAN_REVIEW_THRESHOLD;
 
   return (
-    <div className="flex flex-wrap items-center gap-x-6 gap-y-3 border-b border-line px-4 py-3">
+    <div className="flex flex-wrap items-center gap-x-6 gap-y-2 border-b border-line px-5 py-2.5">
       <div className="flex items-baseline gap-2.5">
         <span className="micro">Completion confidence</span>
         <span className="data-value text-xl leading-none" style={{ color: band.token }}>
@@ -62,9 +62,8 @@ export function ConfidenceHeader({
             style={{ left: `${HUMAN_REVIEW_THRESHOLD * 100}%` }}
           />
         </div>
-        <p className="micro mt-1.5">
-          below {HUMAN_REVIEW_THRESHOLD.toFixed(2)} → human review · threshold enforced in code,
-          not in the prompt
+        <p className="micro mt-1.5 truncate">
+          below {HUMAN_REVIEW_THRESHOLD.toFixed(2)} → a person decides · enforced in code, not in the prompt
         </p>
       </div>
 

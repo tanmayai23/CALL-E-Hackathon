@@ -3,12 +3,12 @@
 /**
  * The banner that says nobody's phone rang.
  *
- * §12 #6 ranks the suppression log among the details that make a judge read
- * this as a real product: visible proof that the agent chose *not* to call on a
- * transient spike. Restraint reads as intelligence, but only if it is shown.
+ * Visible proof that the system chose *not* to call — here, because the request
+ * was already covered. Restraint reads as judgement, but only if it is shown.
  */
 
 import { motion, useReducedMotion } from "framer-motion";
+import { BellOff } from "lucide-react";
 import { StateChip } from "@/components/ui/StateChip";
 import { T } from "@/lib/motion";
 
@@ -20,13 +20,13 @@ export function SuppressionBanner({ reason }: { reason: string }) {
       initial={reduced ? false : { opacity: 0, y: -6 }}
       animate={{ opacity: 1, y: 0 }}
       transition={T.base}
-      className="flex shrink-0 items-start gap-3 border-b border-state-info/30 bg-state-info/8 px-4 py-3"
+      className="flex shrink-0 items-start gap-3 border-b border-line-strong bg-stone/40 px-5 py-3"
     >
-      <StateChip state="info" size="sm">
+      <StateChip state="idle" icon={BellOff} size="sm">
         Suppressed
       </StateChip>
       <p className="text-xs leading-relaxed text-ink-dim">
-        <span className="text-ink">No call was placed.</span> {reason}
+        <span className="font-medium text-ink">No call was placed.</span> {reason}
       </p>
     </motion.div>
   );

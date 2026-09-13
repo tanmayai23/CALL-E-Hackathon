@@ -1,22 +1,23 @@
 "use client";
 
 /**
- * Responder + live call state — §4.2 and signature animation §6.3 #1.
- * Concentric rings expanding from the responder's initials read as "ringing"
- * instantly, without a word of narration.
+ * The contact being called, and the live state of that call.
+ * Concentric rings from the contact's initials read as "ringing" in a still
+ * frame, without a word of narration.
  */
 
 import { motion, useReducedMotion } from "framer-motion";
 import { PhoneOutgoing } from "lucide-react";
-import type { CallState, Responder } from "@/lib/contracts/domain";
+import type { CallState, Contact } from "@/lib/contracts/domain";
 import { StateChip } from "@/components/ui/StateChip";
 import { EmptyState } from "@/components/ui/Panel";
 import { useNow } from "@/hooks/useClientValue";
 import { CALL } from "@/lib/state-map";
-import { maskPhone } from "@/lib/mock/facility";
-import { formatClock } from "@/lib/utils";
+import { maskPhone } from "@/lib/mock/directory";
+import { cn, formatClock } from "@/lib/utils";
 import { T } from "@/lib/motion";
-import { cn } from "@/lib/utils";
+
+export const RUNG_NAME: Record<number, string> = { 1: "primary", 2: "backup", 3: "supervisor" };
 
 function initials(name: string) {
   return name
@@ -26,19 +27,24 @@ function initials(name: string) {
     .join("");
 }
 
-function CallTimer({ connectedAt, running }: { connectedAt: number | null; running: boolean }) {
+function CallTimer({
+  connectedAt,
+  endedAt,
+  running,
+}: {
+  connectedAt: number | null;
+  endedAt: number | null;
+  running: boolean;
+}) {
   const now = useNow(250, running && connectedAt != null);
-
   if (connectedAt == null) return null;
-  const elapsed = Math.max(0, (now ?? connectedAt) - connectedAt);
+  const until = running ? now : (endedAt ?? now);
+  const elapsed = Math.max(0, (until ?? connectedAt) - connectedAt);
 
   return (
     <span className="data-value flex items-center gap-1.5 text-sm text-ink">
       <span
-        className={cn(
-          "h-1.5 w-1.5 rounded-full",
-          running ? "animate-beacon bg-state-active" : "bg-state-idle",
-        )}
+        className={cn("h-1.5 w-1.5 rounded-full", running ? "animate-beacon bg-state-active" : "bg-state-idle")}
         aria-hidden
       />
       {formatClock(elapsed)}
@@ -46,25 +52,29 @@ function CallTimer({ connectedAt, running }: { connectedAt: number | null; runni
   );
 }
 
-export function ResponderCall({
-  responder,
+export function ContactCall({
+  contact,
+  company,
   rung,
   callState,
   connectedAt,
+  endedAt,
 }: {
-  responder: Responder | null;
+  contact: Contact | null;
+  company: string;
   rung: number;
   callState: CallState | null;
   connectedAt: number | null;
+  endedAt: number | null;
 }) {
   const reduced = useReducedMotion() ?? false;
 
-  if (!responder) {
+  if (!contact) {
     return (
       <EmptyState
         icon={PhoneOutgoing}
-        title="No responder selected"
-        body="The agent filters the consented roster by required skill, on-shift window and service zone, then picks the highest-priority match for the current escalation rung."
+        title="No contact selected yet"
+        body="The agent picks a consented contact at the supplier by product, region, working hours and escalation priority, starting with the primary."
       />
     );
   }
@@ -74,14 +84,11 @@ export function ResponderCall({
   const conversing = callState === "in_conversation" || callState === "connected";
 
   return (
-    <div className="flex items-center gap-4 px-4 py-4">
+    <div className="flex items-center gap-4 px-5 py-4">
       <div className="relative flex h-12 w-12 shrink-0 items-center justify-center">
         {ringing && !reduced && (
           <>
-            <span
-              aria-hidden
-              className="animate-pulse-ring absolute inset-0 rounded-full border border-state-active"
-            />
+            <span aria-hidden className="animate-pulse-ring absolute inset-0 rounded-full border border-state-active" />
             <span
               aria-hidden
               className="animate-pulse-ring absolute inset-0 rounded-full border border-state-active"
@@ -94,24 +101,27 @@ export function ResponderCall({
           animate={{ scale: conversing ? 1 : 0.96 }}
           transition={T.spring}
           className={cn(
-            "data-value flex h-12 w-12 items-center justify-center rounded-full border text-sm font-medium",
+            "flex h-12 w-12 items-center justify-center rounded-full border text-sm font-semibold",
             conversing || ringing
-              ? "border-state-active bg-state-active/12 text-state-active"
-              : "border-line-strong bg-elevated text-ink-dim",
+              ? "border-state-active/50 bg-state-active/10 text-state-active"
+              : "border-line-strong bg-stone/60 text-ink-dim",
           )}
         >
-          {initials(responder.name)}
+          {initials(contact.name)}
         </motion.span>
       </div>
 
       <div className="min-w-0 flex-1">
         <div className="flex items-baseline gap-2">
-          <p className="truncate text-sm font-medium text-ink">{responder.name}</p>
-          <span className="micro shrink-0">rung {rung}</span>
+          <p className="truncate text-sm font-semibold text-ink">{contact.name}</p>
+          <span className="micro shrink-0">{RUNG_NAME[rung] ?? `rung ${rung}`}</span>
         </div>
-        <p className="truncate text-xs text-ink-dim">{responder.role}</p>
+        <p className="truncate text-xs text-ink-dim">
+          {contact.role} · {company}
+        </p>
         <p className="data-value mt-0.5 truncate text-[11px] text-ink-faint">
-          {maskPhone(responder.phoneE164)} · zone {responder.zone} · {responder.preferredLanguage}
+          {maskPhone(contact.phoneE164)} · {contact.region} · {contact.workingHours.start}–
+          {contact.workingHours.end}
         </p>
       </div>
 
@@ -125,7 +135,7 @@ export function ResponderCall({
             Not dialled
           </StateChip>
         )}
-        <CallTimer connectedAt={connectedAt} running={conversing} />
+        <CallTimer connectedAt={connectedAt} endedAt={endedAt} running={conversing} />
       </div>
     </div>
   );
