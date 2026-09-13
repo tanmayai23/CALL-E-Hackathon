@@ -1,25 +1,32 @@
 /**
- * In-memory mock backend.
+ * In-memory mock backend — the dev harness described in FR-4.5.
  *
- * Holds incidents and replays scenario scripts in real time. Survives Fast
- * Refresh by hanging off `globalThis`, so a scenario running in one tab is not
- * destroyed by an edit in another.
+ * Holds coordination requests (orders), replays scenario scripts in real time,
+ * and implements the operator actions a real backend would: approve or reject
+ * a changed price, correct an extracted field, and halt all calling. Survives
+ * Fast Refresh by hanging off `globalThis`.
  *
- * This is the dev harness described in FR-5.6 and CLAUDE.md Rule 1: it exists
- * so the dashboard can be built and rehearsed without touching the 20-call
- * CALL-E budget. It is never the demo path.
+ * It exists so the dashboard can be built and rehearsed without spending the
+ * CALL-E call budget. It is never the demo path.
  */
 
-import type { Incident, IncidentStatus } from "@/lib/contracts/domain";
+import type {
+  Contact,
+  FollowUp,
+  Order,
+  OrderStatus,
+  TriggerType,
+  Urgency,
+} from "@/lib/contracts/domain";
 import type { SentinelEvent } from "@/lib/contracts/events";
-import { ASSETS, FACILITY, assetById } from "./facility";
-import { SCENARIOS, scenarioById, type ScriptStep } from "./scenarios";
+import { BUYER, PRODUCT, SELLER, contactById, ladderFor } from "./directory";
+import { scenarioById, type ScriptStep } from "./scenarios";
 
 export interface Run {
-  incident: Incident;
-  steps: ScriptStep[];
+  order: Order;
+  ladder: Contact[];
   emitted: SentinelEvent[];
-  startedAt: number;
+  followUps: FollowUp[];
   finished: boolean;
   timers: ReturnType<typeof setTimeout>[];
   subscribers: Set<(event: SentinelEvent) => void>;
@@ -33,105 +40,297 @@ interface Store {
 }
 
 declare global {
-  var __sentinelStore: Store | undefined;
+  var __sentinelOrderStore: Store | undefined;
 }
 
 const store: Store =
-  globalThis.__sentinelStore ??
-  (globalThis.__sentinelStore = {
+  globalThis.__sentinelOrderStore ??
+  (globalThis.__sentinelOrderStore = {
     runs: new Map(),
     killSwitch: false,
     seeded: false,
     counter: 0,
   });
 
-/* -------------------------------------------------------------------------- */
+/** Statuses that end a request. `APPROVAL_REQUIRED` is not one: it waits on a person. */
+const TERMINAL: ReadonlySet<OrderStatus> = new Set([
+  "CONFIRMED",
+  "PARTIALLY_CONFIRMED",
+  "CALLBACK_SCHEDULED",
+  "HUMAN_REVIEW",
+  "UNRESOLVED",
+  "SUPPRESSED",
+]);
 
-function nextId(): { id: string; traceId: string } {
-  store.counter += 1;
-  const n = String(store.counter).padStart(4, "0");
-  const rand = Math.random().toString(36).slice(2, 8);
-  return { id: `INC-${n}`, traceId: `tr_${rand}${Date.now().toString(36).slice(-4)}` };
+/* ─── Creating orders ───────────────────────────────────────────────────── */
+
+export interface NewOrderInput {
+  reference: string;
+  description: string;
+  unit: string;
+  quantity: number;
+  requiredBy: string;
+  triggerType: TriggerType;
 }
 
-function makeIncident(scenarioId: string, openedAt: string): Incident {
-  const scenario = scenarioById(scenarioId);
-  if (!scenario) throw new Error(`Unknown scenario: ${scenarioId}`);
-  const asset = assetById(scenario.assetId);
-  const { id, traceId } = nextId();
+/** FR-2.2 — urgency from how soon the goods are needed. */
+function urgencyFor(requiredBy: string, from: number): Urgency {
+  const hours = (Date.parse(requiredBy) - from) / 3_600_000;
+  if (hours <= 24) return "URGENT";
+  if (hours <= 72) return "PRIORITY";
+  return "ROUTINE";
+}
+
+function triggerSummary(input: NewOrderInput): string {
+  const qty = `${input.quantity} ${input.unit}`;
+  switch (input.triggerType) {
+    case "INVENTORY":
+      return `Stock of ${input.description.toLowerCase()} fell below the reorder point — ${qty} to replenish`;
+    case "DELIVERY":
+      return `Delivery for ${input.reference} is at risk — dispatch not yet confirmed`;
+    case "EXCEPTION":
+      return `Exception raised on ${input.reference} — supplier confirmation needed`;
+    case "IOT":
+      return `Storage sensor flagged a risk to ${input.description.toLowerCase()} — ${qty} to source`;
+    default:
+      return `Order ${input.reference} for ${qty} needs a confirmed dispatch`;
+  }
+}
+
+function makeOrder(input: NewOrderInput, scenarioId: string, createdAt: number): Order {
+  store.counter += 1;
+  const id = `CR-${1000 + store.counter}`;
+  const rand = Math.random().toString(36).slice(2, 8);
 
   return {
     id,
-    traceId,
-    facility: FACILITY,
-    asset,
-    severity: scenario.severity,
-    status: "OPEN",
-    openedAt,
-    closedAt: null,
-    safeWindowMinutes: asset.safeWindowMinutes,
-    escalationRung: 1,
-    maxRungs: 3,
-    reading: {
-      metric: asset.metric,
-      value: scenario.baseline[scenario.baseline.length - 1],
-      unit: scenario.unit,
-      threshold: scenario.threshold,
+    reference: input.reference,
+    traceId: `tr_${rand}${createdAt.toString(36).slice(-4)}`,
+    buyer: BUYER,
+    seller: SELLER,
+    item: {
+      sku: PRODUCT.sku,
+      description: input.description,
+      unit: input.unit,
+      requestedQuantity: input.quantity,
+      confirmedQuantity: null,
+      remainingQuantity: null,
+      unitPrice: PRODUCT.unitPrice,
+      currency: PRODUCT.currency,
     },
+    status: "AWAITING_CONFIRMATION",
+    urgency: urgencyFor(input.requiredBy, createdAt),
+    requiredBy: input.requiredBy,
+    trigger: {
+      type: input.triggerType,
+      summary: triggerSummary(input),
+      receivedAt: new Date(createdAt).toISOString(),
+    },
+    createdAt: new Date(createdAt).toISOString(),
+    closedAt: null,
+    currentRung: 1,
+    maxRungs: 3,
+    outcome: null,
+    operatorMinutesSaved: null,
     scenarioId,
-    finalOutcome: null,
-    timeSavedMinutes: null,
   };
 }
 
-/**
- * Server-side projection of an event onto incident summary state, so the
- * incident list endpoint stays cheap. The client derives its own richer view
- * from the same event stream.
- */
-function project(incident: Incident, event: SentinelEvent): void {
+/* ─── Projection: events → the order summary the list endpoint serves ──── */
+
+function project(run: Run, event: SentinelEvent, at: number): void {
+  const order = run.order;
+  const closeAt = new Date(at).toISOString();
+
   switch (event.type) {
-    case "signal.received":
-      incident.reading = { ...incident.reading, value: event.value };
+    case "order.opened":
+      order.status = "AWAITING_CONFIRMATION";
+      order.urgency = event.urgency;
       break;
-    case "incident.opened":
-      incident.severity = event.severity;
-      incident.safeWindowMinutes = event.safeWindowMinutes;
-      incident.status = "OPEN";
+    case "order.suppressed":
+      order.status = "SUPPRESSED";
+      order.outcome = event.reason;
+      order.closedAt = closeAt;
       break;
-    case "incident.suppressed":
-      incident.status = "RESOLVED";
-      incident.finalOutcome = "Suppressed by correlation — no call placed";
-      incident.closedAt = new Date().toISOString();
-      incident.timeSavedMinutes = 0;
+    case "contact.selected":
+      order.status = "CALLING";
+      order.currentRung = event.rung;
       break;
-    case "responder.selected":
-      incident.escalationRung = event.rung;
+    case "order.escalated":
+      order.currentRung = event.toRung;
       break;
-    case "call.state":
-      incident.status = event.state === "completed" ? incident.status : "CALLING";
+    case "approval.required":
+      order.status = "APPROVAL_REQUIRED";
       break;
-    case "incident.escalated":
-      incident.escalationRung = event.toRung;
+    case "followup.scheduled":
+      run.followUps = [...run.followUps.filter((f) => f.id !== event.followUp.id), event.followUp];
       break;
-    case "result.extracted":
-      if (event.confidence.score < 0.7) incident.status = "HUMAN_REVIEW";
+    case "order.updated":
+      order.status = event.status;
+      order.item.confirmedQuantity = event.confirmedQuantity;
+      order.item.remainingQuantity = event.remainingQuantity;
+      if (event.unitPrice != null) order.item.unitPrice = event.unitPrice;
+      order.outcome = event.summary;
+      order.operatorMinutesSaved = event.operatorMinutesSaved;
+      order.closedAt = TERMINAL.has(event.status) ? closeAt : null;
       break;
-    case "incident.resolved":
-      incident.status = "RESOLVED";
-      incident.finalOutcome = event.outcome;
-      incident.timeSavedMinutes = event.timeSavedMinutes;
-      incident.closedAt = new Date().toISOString();
-      break;
-    case "incident.unresolved":
-      incident.status = "UNRESOLVED";
-      incident.finalOutcome = event.reason;
-      incident.closedAt = new Date().toISOString();
+    case "order.unresolved":
+      order.status = "UNRESOLVED";
+      order.outcome = event.reason;
+      order.closedAt = closeAt;
       break;
   }
 }
 
-/* -------------------------------------------------------------------------- */
+function publish(run: Run, event: SentinelEvent): void {
+  run.emitted.push(event);
+  project(run, event, Date.now());
+  run.subscribers.forEach((fn) => fn(event));
+}
+
+/* ─── Runs ──────────────────────────────────────────────────────────────── */
+
+function createRun(scenarioId: string, input: NewOrderInput, startedAt: number): {
+  run: Run;
+  steps: ScriptStep[];
+} {
+  const scenario = scenarioById(scenarioId);
+  if (!scenario) throw new Error(`Unknown scenario: ${scenarioId}`);
+
+  const priorOrders = [...store.runs.values()].map((r) => r.order);
+  const order = makeOrder(input, scenarioId, startedAt);
+  const ladder = ladderFor(order.seller.id);
+  const steps = scenario.build({ order, ladder, priorOrders, startedAt });
+
+  const run: Run = {
+    order,
+    ladder,
+    emitted: [],
+    followUps: [],
+    finished: false,
+    timers: [],
+    subscribers: new Set(),
+  };
+  store.runs.set(order.id, run);
+  return { run, steps };
+}
+
+/** Start a live run: every step is emitted at its scripted offset from now. */
+export function trigger(scenarioId: string, input: NewOrderInput): Run {
+  seed();
+  const { run, steps } = createRun(scenarioId, input, Date.now());
+
+  const last = steps.reduce((max, s) => Math.max(max, s.at), 0);
+  for (const step of steps) {
+    run.timers.push(setTimeout(() => publish(run, step.event), step.at));
+  }
+  run.timers.push(setTimeout(() => (run.finished = true), last + 400));
+  return run;
+}
+
+/* ─── Operator actions ──────────────────────────────────────────────────── */
+
+/** "Metro Supply Co." → "Metro Supply Co", so a sentence can end on it once. */
+function withoutFullStop(name: string): string {
+  return name.replace(/\.$/, "");
+}
+
+export class StoreError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+  ) {
+    super(message);
+  }
+}
+
+/**
+ * FR-5.3 — a changed price is decided by a person, never by the agent.
+ * Approve confirms the order at the new price; reject hands it to a person to
+ * renegotiate.
+ */
+export function decideApproval(
+  orderId: string,
+  decision: "APPROVE" | "REJECT",
+  note: string,
+): void {
+  const run = store.runs.get(orderId);
+  if (!run) throw new StoreError(`No order ${orderId}`, 404);
+  if (run.order.status !== "APPROVAL_REQUIRED") {
+    throw new StoreError("This order is not waiting for an approval", 409);
+  }
+
+  const request = [...run.emitted]
+    .reverse()
+    .find((e): e is Extract<SentinelEvent, { type: "approval.required" }> => e.type === "approval.required");
+  if (!request) throw new StoreError("No approval request recorded for this order", 409);
+
+  const { order } = run;
+  const money = new Intl.NumberFormat("en-IN", {
+    style: "currency",
+    currency: request.currency,
+    maximumFractionDigits: 0,
+  });
+  const per = order.item.unit.replace(/s$/, "");
+  const suffix = note.trim() ? ` Note: ${note.trim()}` : "";
+
+  if (decision === "APPROVE") {
+    const primary = run.ladder[0];
+    publish(run, {
+      type: "followup.scheduled",
+      orderId,
+      followUp: {
+        id: `${orderId}-verify`,
+        orderId,
+        kind: "VERIFICATION",
+        dueAt: new Date(Date.now() + 2 * 3_600_000).toISOString(),
+        contactId: primary.id,
+        note: `Verify ${order.item.requestedQuantity} ${order.item.unit} dispatched at the approved price`,
+        status: "SCHEDULED",
+      },
+    });
+    publish(run, {
+      type: "order.updated",
+      orderId,
+      status: "CONFIRMED",
+      confirmedQuantity: order.item.requestedQuantity,
+      remainingQuantity: 0,
+      unitPrice: request.proposedUnitPrice,
+      summary: `Operator approved ${money.format(request.proposedUnitPrice)} per ${per}. Order confirmed for dispatch today.${suffix}`,
+      operatorMinutesSaved: 11,
+    });
+    return;
+  }
+
+  publish(run, {
+    type: "order.updated",
+    orderId,
+    status: "HUMAN_REVIEW",
+    confirmedQuantity: null,
+    remainingQuantity: null,
+    summary: `Operator rejected ${money.format(request.proposedUnitPrice)} per ${per} — a person needs to renegotiate with ${withoutFullStop(order.seller.name)}.${suffix}`,
+    operatorMinutesSaved: null,
+  });
+}
+
+/**
+ * FR-6.4 — operator correction of an extracted field. Re-emits
+ * `result.extracted` with the corrected values; confidence and evidence are
+ * left untouched, because an edit does not change what was said on the call.
+ */
+export function overrideResult(orderId: string, patch: Record<string, unknown>): void {
+  const run = store.runs.get(orderId);
+  if (!run) throw new StoreError(`No order ${orderId}`, 404);
+
+  const last = [...run.emitted]
+    .reverse()
+    .find((e): e is Extract<SentinelEvent, { type: "result.extracted" }> => e.type === "result.extracted");
+  if (!last) throw new StoreError("No extracted result to correct", 404);
+
+  publish(run, { ...last, structured: { ...last.structured, ...patch } });
+}
+
+/* ─── Kill switch (Rule 3: it always works) ────────────────────────────── */
 
 export function isKillSwitchEngaged(): boolean {
   return store.killSwitch;
@@ -139,89 +338,55 @@ export function isKillSwitchEngaged(): boolean {
 
 export function setKillSwitch(engaged: boolean): boolean {
   store.killSwitch = engaged;
-  if (engaged) {
-    // Rule 3: the kill switch always works. Halt every in-flight run.
-    for (const run of store.runs.values()) {
-      if (run.finished) continue;
-      run.timers.forEach(clearTimeout);
-      run.timers = [];
-      run.finished = true;
-      run.incident.status = "UNRESOLVED";
-      run.incident.finalOutcome = "Halted by kill switch — outbound calling stopped";
-      run.incident.closedAt = new Date().toISOString();
-      const event: SentinelEvent = {
-        type: "incident.unresolved",
-        incidentId: run.incident.id,
-        reason: "Halted by kill switch — outbound calling stopped",
-      };
-      run.emitted.push(event);
-      run.subscribers.forEach((fn) => fn(event));
-    }
+  if (!engaged) return false;
+
+  for (const run of store.runs.values()) {
+    if (run.finished) continue;
+    run.timers.forEach(clearTimeout);
+    run.timers = [];
+    run.finished = true;
+    publish(run, {
+      type: "order.unresolved",
+      orderId: run.order.id,
+      reason: "Halted by the kill switch — outbound calling stopped",
+    });
   }
-  return store.killSwitch;
+  return true;
 }
 
-export function trigger(scenarioId: string): Run {
-  const scenario = scenarioById(scenarioId);
-  if (!scenario) throw new Error(`Unknown scenario: ${scenarioId}`);
+/* ─── Queries ───────────────────────────────────────────────────────────── */
 
+export function getRun(orderId: string): Run | undefined {
   seed();
-
-  const incident = makeIncident(scenarioId, new Date().toISOString());
-  const steps = scenario.build(incident.id);
-
-  const run: Run = {
-    incident,
-    steps,
-    emitted: [],
-    startedAt: Date.now(),
-    finished: false,
-    timers: [],
-    subscribers: new Set(),
-  };
-  store.runs.set(incident.id, run);
-
-  const last = steps.reduce((max, s) => Math.max(max, s.at), 0);
-  for (const step of steps) {
-    run.timers.push(
-      setTimeout(() => {
-        run.emitted.push(step.event);
-        project(run.incident, step.event);
-        run.subscribers.forEach((fn) => fn(step.event));
-      }, step.at),
-    );
-  }
-  run.timers.push(setTimeout(() => (run.finished = true), last + 400));
-
-  return run;
+  return store.runs.get(orderId);
 }
 
-export function getRun(incidentId: string): Run | undefined {
-  seed();
-  return store.runs.get(incidentId);
-}
-
-export function listIncidents(): Incident[] {
+export function listOrders(): Order[] {
   seed();
   return [...store.runs.values()]
-    .map((r) => r.incident)
-    .sort((a, b) => b.openedAt.localeCompare(a.openedAt));
+    .map((r) => r.order)
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
 
-export function clearAll(): void {
-  for (const run of store.runs.values()) run.timers.forEach(clearTimeout);
-  store.runs.clear();
-  store.counter = 0;
-  store.seeded = false;
+export interface FollowUpView extends FollowUp {
+  orderReference: string;
+  contactName: string;
 }
 
-/**
- * Reset to just the seeded history — used by the simulator's "clear live runs"
- * control so the empty and populated states are both reachable on demand.
- */
-export function resetToSeed(): void {
-  clearAll();
+/** Every follow-up still to happen, soonest first. */
+export function listFollowUps(): FollowUpView[] {
   seed();
+  return [...store.runs.values()]
+    .flatMap((run) =>
+      run.followUps
+        .filter((f) => f.status === "SCHEDULED")
+        .map((f) => ({
+          ...f,
+          orderReference: run.order.reference,
+          contactName: contactById(f.contactId)?.name ?? "Unknown contact",
+        })),
+    )
+    .sort((a, b) => a.dueAt.localeCompare(b.dueAt));
 }
 
 export function subscribe(run: Run, fn: (event: SentinelEvent) => void): () => void {
@@ -229,110 +394,58 @@ export function subscribe(run: Run, fn: (event: SentinelEvent) => void): () => v
   return () => run.subscribers.delete(fn);
 }
 
-/* --------------------------------------------------------------------------
-   Seeded history — a cold dashboard with zero incidents reads as broken on
-   camera. These are closed incidents only; nothing here is ever "live".
-   -------------------------------------------------------------------------- */
+/** Drop every run and return to the seeded history. */
+export function resetToSeed(): void {
+  for (const run of store.runs.values()) run.timers.forEach(clearTimeout);
+  store.runs.clear();
+  store.counter = 0;
+  store.seeded = false;
+  seed();
+}
 
-const SEED: Array<{
-  scenarioId: string;
-  minutesAgo: number;
-  status: IncidentStatus;
-  outcome: string;
-  timeSaved: number | null;
-  rung: number;
-}> = [
-  {
-    scenarioId: "cold-chain-critical",
-    minutesAgo: 184,
-    status: "RESOLVED",
-    outcome: "Commitment secured — Ravi Sharma, ETA 35 min. Verified on arrival at T+38.",
-    timeSaved: 12.4,
-    rung: 1,
-  },
-  {
-    scenarioId: "transient-spike",
-    minutesAgo: 96,
-    status: "RESOLVED",
-    outcome: "Suppressed by correlation — defrost signature, no sustained excursion",
-    timeSaved: 0,
-    rung: 1,
-  },
-  {
-    scenarioId: "refusal-escalation",
-    minutesAgo: 61,
-    status: "UNRESOLVED",
-    outcome: "Ladder exhausted after 3 rungs — escalated to facility manager on shift",
-    timeSaved: null,
-    rung: 3,
-  },
-  {
-    scenarioId: "sensor-offline",
-    minutesAgo: 27,
-    status: "HUMAN_REVIEW",
-    outcome: "Extraction confidence 0.61 — ETA stated as “soon”, held for operator review",
-    timeSaved: null,
-    rung: 2,
-  },
+/* ─── Seeded history ─────────────────────────────────────────────────────
+   An empty board reads as broken on camera. Seeds are built by running the
+   real scenarios with a start time in the past and emitting every step at
+   once, so opening a seeded order replays its complete story — nothing here
+   is hand-written state that the live path could disagree with.
+   ────────────────────────────────────────────────────────────────────────── */
+
+const SEED: Array<{ scenarioId: string; reference: string; quantity: number; minutesAgo: number }> = [
+  { scenarioId: "no-answer-escalation", reference: "ORD-477", quantity: 200, minutesAgo: 290 },
+  { scenarioId: "vague-answer", reference: "ORD-471", quantity: 80, minutesAgo: 205 },
+  { scenarioId: "partial-stock", reference: "ORD-479", quantity: 150, minutesAgo: 118 },
+  { scenarioId: "callback", reference: "ORD-480", quantity: 120, minutesAgo: 42 },
+  { scenarioId: "price-change", reference: "ORD-481", quantity: 60, minutesAgo: 21 },
 ];
 
 function seed(): void {
   if (store.seeded) return;
   store.seeded = true;
 
+  const now = Date.now();
   for (const s of SEED) {
-    const openedAt = new Date(Date.now() - s.minutesAgo * 60_000).toISOString();
-    const incident = makeIncident(s.scenarioId, openedAt);
-    incident.status = s.status;
-    incident.finalOutcome = s.outcome;
-    incident.timeSavedMinutes = s.timeSaved;
-    incident.escalationRung = s.rung;
-    incident.closedAt = new Date(
-      Date.now() - (s.minutesAgo - 3) * 60_000,
-    ).toISOString();
-
-    store.runs.set(incident.id, {
-      incident,
-      steps: [],
-      emitted: [],
-      startedAt: Date.parse(openedAt),
-      finished: true,
-      timers: [],
-      subscribers: new Set(),
-    });
-  }
-}
-
-export { SCENARIOS, ASSETS };
-
-/**
- * FR-6.6 — operator correction of extracted fields before final commit.
- * Re-emits `result.extracted` with the corrected values; confidence and
- * evidence are left untouched, because they came from CALL-E and an operator
- * edit does not change what was actually said.
- */
-export function overrideResult(
-  incidentId: string,
-  patch: Record<string, unknown>,
-): SentinelEvent | null {
-  const run = store.runs.get(incidentId);
-  if (!run) return null;
-
-  const last = [...run.emitted]
-    .reverse()
-    .find((e): e is Extract<SentinelEvent, { type: "result.extracted" }> =>
-      e.type === "result.extracted",
+    const startedAt = now - s.minutesAgo * 60_000;
+    const { run, steps } = createRun(
+      s.scenarioId,
+      {
+        reference: s.reference,
+        description: PRODUCT.description,
+        unit: PRODUCT.unit,
+        quantity: s.quantity,
+        requiredBy: new Date(startedAt + 8 * 3_600_000).toISOString(),
+        triggerType: "INVENTORY",
+      },
+      startedAt,
     );
-  if (!last) return null;
 
-  const event: SentinelEvent = {
-    ...last,
-    structured: { ...last.structured, ...patch },
-  };
-
-  run.emitted.push(event);
-  project(run.incident, event);
-  run.incident.status = "RESOLVED";
-  run.subscribers.forEach((fn) => fn(event));
-  return event;
+    for (const step of steps) {
+      run.emitted.push(step.event);
+      project(run, step.event, startedAt + step.at);
+    }
+    // A follow-up whose time has already passed happened; it is not overdue.
+    run.followUps = run.followUps.map((f) =>
+      Date.parse(f.dueAt) < now ? { ...f, status: "DONE" as const } : f,
+    );
+    run.finished = true;
+  }
 }

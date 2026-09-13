@@ -5,11 +5,12 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 /**
- * CLAUDE.md §8.2 — GET /api/v1/incidents/:id/stream
+ * GET /api/v1/orders/:id/stream — Server-Sent Events carrying the
+ * `SentinelEvent` union (docs/FRONTEND_BACKEND_CONTRACT.md §5).
  *
- * Server-Sent Events carrying the frozen `SentinelEvent` union (§8.3). Events
- * already emitted are replayed first so a page loaded mid-call catches up
- * rather than showing a half-built timeline.
+ * Events already emitted are replayed first, so a page loaded mid-call — or a
+ * finished order opened from history — shows the whole story rather than a
+ * half-built timeline.
  */
 export async function GET(
   request: Request,

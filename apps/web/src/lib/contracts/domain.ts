@@ -1,26 +1,128 @@
 /**
- * Domain types — mirrors the data model in CLAUDE.md §7 and the
- * EscalationContext in §8.1 (owner: Sameer).
+ * Domain types — wholesale coordination (PRD v2.0 §7.2, §12).
  *
- * NOTE: CLAUDE.md §13 places the canonical definitions in `packages/types`,
- * imported by both frontend and backend. That package does not exist in this
- * repository yet. These are a faithful mirror of the frozen contract, kept in
- * one file so the swap is a single import change:
+ * STATUS: PROPOSED. These shapes are defined here, in the dashboard, until the
+ * shared contract in `packages/types` is migrated from the v1 incident model by
+ * its owners (Sameer + Aryan). They are documented field by field in
+ * `docs/FRONTEND_BACKEND_CONTRACT.md`, which is what the backend implements.
  *
- *     import { ... } from "@sentinel/types";
- *
- * Do not diverge from the contract here. If a field needs to change, it changes
- * in both places at once, with the owner's agreement (Rule 4).
+ * `WholesaleResult` is the PRD §7.2 CALL-E `resultSchema`, transcribed
+ * verbatim. Nothing else here may redefine what a call extracts.
  */
 
-export type Severity = "INFO" | "WARNING" | "CRITICAL";
+/* ─── Organisations and contacts ─────────────────────────────────────────── */
 
-export type IncidentStatus =
-  | "OPEN"
+export type OrganizationRole = "WHOLESALER" | "DISTRIBUTOR";
+
+export interface Organization {
+  id: string;
+  name: string;
+  role: OrganizationRole;
+}
+
+/*
+ * Shapes that travel inside SSE events are `type` aliases, not interfaces: the
+ * event validators are loose objects (they keep unknown keys), and TypeScript
+ * only treats type aliases as assignable to an index-signature type.
+ */
+
+export type WorkingHours = {
+  /** HH:mm, local to `timezone`. */
+  start: string;
+  end: string;
+  timezone: string;
+};
+
+/** A consented business contact. Only these numbers are ever callable (FR-7.2). */
+export type Contact = {
+  id: string;
+  organizationId: string;
+  name: string;
+  role: string;
+  phoneE164: string;
+  productCategories: string[];
+  region: string;
+  workingHours: WorkingHours;
+  /** 1 = primary, 2 = backup, 3 = supervisor. */
+  escalationPriority: number;
+  preferredLanguage: string;
+  consentAt: string;
+  cooldownUntil: string | null;
+};
+
+/* ─── Orders ─────────────────────────────────────────────────────────────── */
+
+export type OrderStatus =
+  | "AWAITING_CONFIRMATION"
   | "CALLING"
-  | "RESOLVED"
+  | "CONFIRMED"
+  | "PARTIALLY_CONFIRMED"
+  | "APPROVAL_REQUIRED"
+  | "CALLBACK_SCHEDULED"
+  | "HUMAN_REVIEW"
   | "UNRESOLVED"
-  | "HUMAN_REVIEW";
+  | "SUPPRESSED";
+
+/** FR-2.2 — derived from the required date, stock risk and delivery window. */
+export type Urgency = "ROUTINE" | "PRIORITY" | "URGENT";
+
+/** FR-1.1 — what created the coordination request. */
+export type TriggerType = "ORDER" | "INVENTORY" | "DELIVERY" | "EXCEPTION" | "IOT";
+
+export interface OrderItem {
+  sku: string;
+  description: string;
+  unit: string;
+  requestedQuantity: number;
+  confirmedQuantity: number | null;
+  remainingQuantity: number | null;
+  unitPrice: number;
+  currency: string;
+}
+
+export interface Trigger {
+  type: TriggerType;
+  summary: string;
+  receivedAt: string;
+}
+
+export type FollowUpKind = "VERIFICATION" | "CALLBACK" | "REMAINING_QUANTITY";
+export type FollowUpStatus = "SCHEDULED" | "DONE" | "CANCELLED";
+
+/** A call or check the system has committed to make later (FR-5.4). */
+export type FollowUp = {
+  id: string;
+  orderId: string;
+  kind: FollowUpKind;
+  dueAt: string;
+  contactId: string;
+  note: string;
+  status: FollowUpStatus;
+};
+
+export interface Order {
+  /** System id of the coordination request, e.g. CR-1007. Routes and events use this. */
+  id: string;
+  /** The business's own order number, e.g. ORD-482 (PRD §12 `external_order_id`). */
+  reference: string;
+  traceId: string;
+  buyer: Organization;
+  seller: Organization;
+  item: OrderItem;
+  status: OrderStatus;
+  urgency: Urgency;
+  requiredBy: string;
+  trigger: Trigger;
+  createdAt: string;
+  closedAt: string | null;
+  currentRung: number;
+  maxRungs: number;
+  outcome: string | null;
+  operatorMinutesSaved: number | null;
+  scenarioId: string;
+}
+
+/* ─── The call ───────────────────────────────────────────────────────────── */
 
 export type CallState =
   | "queued"
@@ -34,91 +136,30 @@ export type CallState =
 
 export type Speaker = "AGENT" | "HUMAN";
 
+export type ContactReached = "yes" | "no" | "wrong_person" | "voicemail" | "unknown";
+export type StockStatus = "confirmed" | "partial" | "unavailable" | "unknown";
+
 export type NextAction =
-  | "CLOSE_RESOLVED"
-  | "ESCALATE_NEXT_RUNG"
-  | "SCHEDULE_VERIFICATION_CALL"
+  | "CONFIRM_ORDER"
+  | "PARTIAL_CONFIRMATION"
+  | "REQUEST_APPROVAL"
   | "SCHEDULE_CALLBACK"
+  | "ESCALATE_NEXT_CONTACT"
   | "HUMAN_REVIEW";
 
-export interface Facility {
-  id: string;
-  name: string;
-  timezone: string;
-  quietHoursStart?: string;
-  quietHoursEnd?: string;
-}
-
-export interface Asset {
-  id: string;
-  facilityId: string;
-  type: string;
-  label: string;
-  location: string;
-  metric: string;
-  safeMin: number;
-  safeMax: number;
-  unit: string;
-  consequenceDesc: string;
-  safeWindowMinutes: number;
-  /** Floor-plan position in metres, [x, y, z] — drives the 3D facility view. */
-  position: [number, number, number];
-  lastHeartbeatAt: string;
-}
-
-export type Responder = {
-  id: string;
-  facilityId: string;
-  name: string;
-  role: string;
-  skills: string[];
-  phoneE164: string;
-  shiftStart: string;
-  shiftEnd: string;
-  zone: string;
-  ladderPriority: number;
-  preferredLanguage: string;
-  consentAt: string;
-  cooldownUntil: string | null;
-}
-
-export interface Reading {
-  metric: string;
-  value: number;
-  unit: string;
-  threshold: number;
-}
-
-/** CLAUDE.md §8.1 — the payload the backend hands to the LangGraph agent. */
-export interface EscalationContext {
-  incidentId: string;
-  traceId: string;
-  severity: Severity;
-  safeWindowMinutes: number;
-  consequence: string;
-  escalationRung: number;
-  facility: Pick<Facility, "id" | "name" | "timezone">;
-  asset: Pick<Asset, "id" | "type" | "location">;
-  reading: Reading;
-  responder: Responder;
-}
-
-/** CLAUDE.md §6.5 — the frozen CALL-E resultSchema, as it comes back. */
-export interface EscalationResult {
-  responder_available: "yes" | "no" | "conditional" | "unknown";
-  eta_minutes?: number;
-  eta_within_safe_window?: boolean;
-  acknowledged_severity: boolean;
-  requires_backup?: boolean;
-  requires_parts?: boolean;
-  decline_reason?:
-    | "on_another_job"
-    | "off_shift"
-    | "out_of_zone"
-    | "not_qualified"
-    | "no_reason"
-    | "none";
+/** PRD §7.2 — `WHOLESALE_COORDINATION_RESULT_SCHEMA`, as CALL-E returns it. */
+export interface WholesaleResult {
+  contact_reached: ContactReached;
+  stock_status: StockStatus;
+  confirmed_quantity?: number;
+  remaining_quantity?: number;
+  unit_price?: number;
+  currency?: string;
+  dispatch_date?: string;
+  delivery_eta?: string;
+  delay_reason?: string;
   callback_requested_at?: string;
+  requires_approval?: boolean;
   verbatim_commitment?: string;
   next_action: NextAction;
 }
@@ -128,13 +169,17 @@ export interface Confidence {
   label: string;
 }
 
+/**
+ * FR-6.3 / PRD §6 — a result below this confidence is never auto-applied to the
+ * order; it goes to a person. Enforced in code, never in the prompt.
+ */
+export const HUMAN_REVIEW_THRESHOLD = 0.7;
+
 export interface TranscriptTurn {
   id: string;
   speaker: Speaker;
   text: string;
   ts: string;
-  /** Set once extraction lands — spans of `text` that CALL-E cited as evidence. */
-  evidence?: boolean;
 }
 
 export interface AgentEvent {
@@ -146,28 +191,18 @@ export interface AgentEvent {
   state: "done" | "live" | "pending" | "failed";
 }
 
-export interface Incident {
-  id: string;
-  traceId: string;
-  facility: Facility;
-  asset: Asset;
-  severity: Severity;
-  status: IncidentStatus;
-  openedAt: string;
-  closedAt: string | null;
-  safeWindowMinutes: number;
-  escalationRung: number;
-  maxRungs: number;
-  reading: Reading;
-  scenarioId: string;
-  finalOutcome: string | null;
-  timeSavedMinutes: number | null;
-}
-
-/** One rung of the escalation ladder, as rendered in the Live Call Theatre. */
+/** One rung of the contact ladder, as rendered on the order screen. */
 export interface LadderRung {
   rung: number;
-  responder: Responder;
-  state: "pending" | "active" | "declined" | "no_answer" | "committed";
+  contact: Contact;
+  state: "pending" | "active" | "declined" | "no_answer" | "committed" | "deferred";
   detail?: string;
+}
+
+/** A commercial change the agent is not allowed to accept (FR-5.3, PRD §17). */
+export interface ApprovalRequest {
+  reason: string;
+  previousUnitPrice: number;
+  proposedUnitPrice: number;
+  currency: string;
 }
