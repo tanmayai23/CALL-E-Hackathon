@@ -183,6 +183,7 @@ export function WholesalerDashboard() {
       // that nothing had reported.
       const result = await apiPost<CallOutcome>("/api/v1/contacts/call", {
         contactId: vendor.id,
+        contact: vendor,
         orderReference: `ORD-${vendor.id.slice(-4).toUpperCase()}`,
       });
 

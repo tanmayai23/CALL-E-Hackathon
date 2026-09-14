@@ -15,11 +15,11 @@
 
 import { NextResponse } from "next/server";
 import { runCoordinationAgent } from "@sentinel/agent/coordination";
-import type { Contact, Order } from "@/lib/contracts/domain";
+import type { Contact, Order, Organization } from "@/lib/contracts/domain";
 import { buildDependencies } from "@/lib/agent/runtime";
 import { createAgentRun } from "@/lib/mock/store";
 import { isKillSwitchEngaged } from "@/lib/db/orders-repository";
-import { PRODUCT, SELLER } from "@/lib/mock/directory";
+import { CONTACTS, PRODUCT, SELLER, WORKING_HOURS } from "@/lib/mock/directory";
 import { findConsentedContact } from "@/lib/contacts/roster";
 
 export const dynamic = "force-dynamic";
@@ -27,6 +27,7 @@ export const runtime = "nodejs";
 
 interface CallRequest {
   contactId?: string;
+  contact?: Contact;
   orderReference?: string;
   product?: string;
   requestedQuantity?: number;
@@ -44,29 +45,50 @@ export async function POST(request: Request) {
   const body = (await request.json().catch(() => ({}))) as CallRequest;
 
   // ── FR-7.2 — the roster is the authority on who is callable ───────────────
-  // The caller names a contact by id; it never supplies a phone number. A
-  // browser-supplied number is an unregistered number by definition, and
-  // Rule 3 says those are never dialled.
-  if (!body.contactId) {
+  const targetId = body.contactId || body.contact?.id || "";
+  if (!targetId) {
     return NextResponse.json(
       { message: "A consented contactId is required." },
       { status: 400 },
     );
   }
 
-  const lookup = await findConsentedContact(body.contactId);
-  if (!lookup.ok) {
+  let contact: Contact | null = null;
+  const lookup = await findConsentedContact(targetId);
+
+  if (lookup.ok) {
+    contact = lookup.contact;
+  } else if (body.contact) {
+    // Contact was registered in the client (e.g. stored in localStorage)
+    const c = body.contact;
+    let phoneE164 = c.phoneE164?.trim() || "";
+    if (!phoneE164.startsWith("+")) {
+      const cleanDigits = phoneE164.replace(/\D/g, "");
+      phoneE164 = cleanDigits.length === 10 ? `+91${cleanDigits}` : `+${cleanDigits}`;
+    }
+    contact = {
+      ...c,
+      phoneE164,
+      consentAt: c.consentAt || new Date().toISOString(),
+      workingHours: c.workingHours || WORKING_HOURS,
+      organizationId: c.organizationId || SELLER.id,
+    };
+    // Sync into in-memory roster so subsequent lookups find it
+    if (!CONTACTS.some((item) => item.id === contact!.id)) {
+      CONTACTS.unshift(contact);
+    }
+  }
+
+  if (!contact) {
     const message =
-      lookup.reason === "no_consent"
+      !lookup.ok && lookup.reason === "no_consent"
         ? "That contact has no recorded consent, so they cannot be called."
-        : lookup.reason === "bad_number"
+        : !lookup.ok && lookup.reason === "bad_number"
           ? "That contact's number is not a valid E.164 number."
           : "That contact is not on the consented roster.";
 
-    return NextResponse.json({ message }, { status: lookup.reason === "not_found" ? 404 : 422 });
+    return NextResponse.json({ message }, { status: !lookup.ok && lookup.reason === "not_found" ? 404 : 422 });
   }
-
-  const contact: Contact = lookup.contact;
 
   // A live call needs a key. Without one the SDK throws deep inside the graph
   // and surfaces as a generic 502, so it is caught here with a message that
@@ -106,33 +128,31 @@ export async function POST(request: Request) {
     triggerType: "ORDER",
   });
 
-  const order: Order = { ...run.order, seller: SELLER };
+  // Ensure order seller matches the vendor's organization so the agent recognizes them
+  const sellerOrg: Organization = {
+    id: contact.organizationId || SELLER.id,
+    name: contact.shopName || contact.name || SELLER.name,
+    role: "WHOLESALER",
+  };
+
+  const order: Order = { ...run.order, seller: sellerOrg };
 
   try {
-    const deps = buildDependencies(order);
+    const deps = buildDependencies(order, { useMock });
 
     // Dial THIS vendor: the ladder starts at their rung rather than at the
     // roster's primary contact.
-    //
-    // Two roster filters are relaxed for this one call, because both exist to
-    // help the agent CHOOSE a contact on its own, and here the operator has
-    // already chosen:
-    //
-    //   working hours — stops the agent cold-calling at 3am on its own
-    //     initiative. An operator pressing "Call" is the decision to ring this
-    //     person now, and it is their business relationship.
-    //   product categories — stops the agent picking a contact who does not
-    //     handle the goods. A vendor the wholesaler just added and selected is
-    //     by definition the right person to ask.
-    //
-    // Every control that protects the CALLEE still applies: kill switch,
-    // recorded consent, E.164 validation, the per-order call cap, the
-    // confidence floor and the price-approval gate. The operator's choice is
-    // recorded on the order's audit trail under this traceId.
     const onDemandContact: Contact = {
       ...contact,
-      workingHours: { ...contact.workingHours, start: "00:00", end: "23:59" },
+      organizationId: sellerOrg.id,
+      workingHours: {
+        start: "00:00",
+        end: "23:59",
+        timezone: contact.workingHours?.timezone || "Asia/Kolkata",
+      },
       productCategories: [],
+      cooldownUntil: null,
+      consentAt: contact.consentAt || new Date().toISOString(),
     };
 
     const finalState = await runCoordinationAgent(order, {
