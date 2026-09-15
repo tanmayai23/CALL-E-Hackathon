@@ -20,7 +20,7 @@ import { buildDependencies } from "@/lib/agent/runtime";
 import { createAgentRun } from "@/lib/mock/store";
 import { isKillSwitchEngaged } from "@/lib/db/orders-repository";
 import { CONTACTS, PRODUCT, SELLER, WORKING_HOURS } from "@/lib/mock/directory";
-import { findConsentedContact } from "@/lib/contacts/roster";
+import { findConsentedContact, cleanToE164 } from "@/lib/contacts/roster";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -61,11 +61,7 @@ export async function POST(request: Request) {
   } else if (body.contact) {
     // Contact was registered in the client (e.g. stored in localStorage)
     const c = body.contact;
-    let phoneE164 = c.phoneE164?.trim() || "";
-    if (!phoneE164.startsWith("+")) {
-      const cleanDigits = phoneE164.replace(/\D/g, "");
-      phoneE164 = cleanDigits.length === 10 ? `+91${cleanDigits}` : `+${cleanDigits}`;
-    }
+    const phoneE164 = cleanToE164 ? cleanToE164(c.phoneE164) : (c.phoneE164?.trim() || "");
     contact = {
       ...c,
       phoneE164,
@@ -170,6 +166,7 @@ export async function POST(request: Request) {
       /** Null when the call produced nothing usable — never a placeholder. */
       structuredResult,
       completionConfidence: confidence,
+      transcript: finalState.transcript || [],
       callPlaced: finalState.callHistory.length > 0,
       /** Set when the agent refused to dial or the call errored. */
       blockedReason: finalState.callError,

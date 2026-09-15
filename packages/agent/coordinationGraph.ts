@@ -397,6 +397,7 @@ export function buildCoordinationGraph(deps: CoordinationDependencies) {
             ? [...state.structuredResults, structuredResult]
             : state.structuredResults,
           confidenceHistory: [...state.confidenceHistory, confidence],
+          transcript: result.transcript ? result.transcript.map((t) => ({ speaker: t.speaker, text: t.text })) : [],
           callHistory: [
             ...state.callHistory,
             {

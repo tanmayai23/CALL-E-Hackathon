@@ -52,6 +52,7 @@ export interface CoordinationState {
   callHistory: CoordinationCallRecord[];
   structuredResults: WholesaleResult[];
   confidenceHistory: Confidence[];
+  transcript?: { speaker: string; text: string }[];
 
   // ── Outcome ───────────────────────────────────────────────────────────────
   /** Set by confirm / partial / unresolved. Null until the graph terminates. */

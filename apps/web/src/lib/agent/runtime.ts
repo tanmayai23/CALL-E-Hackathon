@@ -20,7 +20,8 @@ import type { CoordinationDependencies } from "@sentinel/agent/coordination";
 import type { Contact, FollowUp, Order } from "@/lib/contracts/domain";
 import { WholesaleResultSchema, type SentinelEvent } from "@/lib/contracts/events";
 import { isKillSwitchEngaged } from "@/lib/db/orders-repository";
-import { ladderFor } from "@/lib/mock/directory";
+import { getSupabaseClient, hasSupabaseConfig } from "@/lib/db/supabase-client";
+import { ladderFor, WORKING_HOURS } from "@/lib/mock/directory";
 import { finishAgentRun, publishAgentEvent } from "@/lib/mock/store";
 
 /** Emits into the run and therefore into every open SSE subscriber. */
@@ -42,7 +43,50 @@ export function buildDependencies(
   const useMock = options.useMock ?? process.env.CALLE_USE_MOCK === "true";
 
   return {
-    getDirectory: async (sellerOrgId) => ladderFor(sellerOrgId),
+    getDirectory: async (sellerOrgId) => {
+      const memoryLadder = ladderFor(sellerOrgId);
+      if (hasSupabaseConfig()) {
+        const supabase = getSupabaseClient();
+        if (supabase) {
+          try {
+            const { data, error } = await supabase
+              .from("contacts")
+              .select("*")
+              .eq("organization_id", sellerOrgId);
+
+            if (!error && data && data.length > 0) {
+              const dbContacts: Contact[] = data.map((row) => ({
+                id: String(row.id),
+                organizationId: String(row.organization_id),
+                name: String(row.name),
+                role: String(row.role || "Vendor"),
+                phoneE164: String(row.phone_e164),
+                productCategories: (row.product_categories as string[]) || ["wholesale"],
+                region: String(row.region),
+                workplaceLocation: (row.workplace_location as string) || undefined,
+                livingLocation: (row.living_location as string) || undefined,
+                shopName: (row.shop_name as string) || undefined,
+                workingHours: (row.working_hours as Contact["workingHours"]) || WORKING_HOURS,
+                escalationPriority: (row.escalation_priority as number) || 1,
+                preferredLanguage: (row.preferred_language as string) || "en-IN",
+                consentAt: (row.consent_at as string) || new Date().toISOString(),
+                cooldownUntil: (row.cooldown_until as string) || null,
+              }));
+
+              const map = new Map<string, Contact>();
+              memoryLadder.forEach((c) => map.set(c.id, c));
+              dbContacts.forEach((c) => map.set(c.id, c));
+              return Array.from(map.values()).sort(
+                (a, b) => a.escalationPriority - b.escalationPriority,
+              );
+            }
+          } catch (err) {
+            console.warn("[runtime] Supabase getDirectory lookup failed:", err);
+          }
+        }
+      }
+      return memoryLadder;
+    },
 
     // ── FR-10.5 — the real kill switch, not the simulator's copy ────────────
     // Reads through the repository, so it sees Supabase when configured and the

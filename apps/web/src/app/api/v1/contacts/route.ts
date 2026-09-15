@@ -3,6 +3,8 @@ import { CONTACTS, ORGANIZATIONS, SELLER, WORKING_HOURS } from "@/lib/mock/direc
 import { getSupabaseClient, hasSupabaseConfig } from "@/lib/db/supabase-client";
 import type { Contact } from "@/lib/contracts/domain";
 
+import { cleanToE164 } from "@/lib/contacts/roster";
+
 export const dynamic = "force-dynamic";
 
 /** GET /api/v1/contacts — the consented business contacts, merged from Supabase & memory. */
@@ -72,11 +74,7 @@ export async function POST(req: Request) {
       );
     }
 
-    let phoneE164 = mobileNo.trim();
-    if (!phoneE164.startsWith("+")) {
-      const cleanDigits = phoneE164.replace(/\D/g, "");
-      phoneE164 = cleanDigits.length === 10 ? `+91${cleanDigits}` : `+${cleanDigits}`;
-    }
+    const phoneE164 = cleanToE164(mobileNo);
 
     const contactId = `ct-${Date.now().toString(36)}`;
     const newContact: Contact = {

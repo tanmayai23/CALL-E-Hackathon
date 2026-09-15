@@ -39,6 +39,19 @@ function rowToContact(row: Record<string, unknown>): Contact {
   };
 }
 
+export function cleanToE164(rawPhone: string): string {
+  if (!rawPhone) return "";
+  const trimmed = rawPhone.trim();
+  const digitsOnly = trimmed.replace(/\D/g, "");
+  if (trimmed.startsWith("+")) {
+    return `+${digitsOnly}`;
+  }
+  if (digitsOnly.length === 10) {
+    return `+91${digitsOnly}`;
+  }
+  return `+${digitsOnly}`;
+}
+
 export type RosterLookup =
   | { ok: true; contact: Contact }
   | { ok: false; reason: "not_found" | "no_consent" | "bad_number" };
@@ -75,6 +88,11 @@ export async function findConsentedContact(contactId: string): Promise<RosterLoo
 
   if (!contact) return { ok: false, reason: "not_found" };
   if (!contact.consentAt) return { ok: false, reason: "no_consent" };
+
+  // Sanitize phone number to standard E.164
+  const normalizedPhone = cleanToE164(contact.phoneE164);
+  contact = { ...contact, phoneE164: normalizedPhone };
+
   if (!/^\+[1-9]\d{7,14}$/.test(contact.phoneE164)) {
     return { ok: false, reason: "bad_number" };
   }

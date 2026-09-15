@@ -43,7 +43,7 @@ import type { Contact } from "@/lib/contracts/domain";
 import { Panel } from "@/components/ui/Panel";
 import { StateChip } from "@/components/ui/StateChip";
 import { Button } from "@/components/ui/Button";
-import { apiGet, apiDelete } from "@/lib/api";
+import { apiGet, apiPost, apiDelete } from "@/lib/api";
 
 interface Turn {
   speaker: "AGENT" | "HUMAN";
@@ -303,126 +303,98 @@ export function VendorDetailView({ vendorId }: VendorDetailViewProps) {
           }
         } catch {}
         const found = allContacts.find((c) => c.id === vendorId);
-        if (found) {
-          setVendor(found);
-          setCallHistory(buildCallHistory(found.name, found.shopName));
+        const targetVendor = found || {
+          id: vendorId,
+          organizationId: "org-metro-supply",
+          name: "Sunita Sharma",
+          role: "Vendor",
+          phoneE164: "+919820441207",
+          productCategories: ["wholesale", "retail"],
+          region: "Mumbai West",
+          workplaceLocation: "MIDC Industrial Estate, Phase II, Zone 2",
+          livingLocation: "Flat 402, Green Acres Apartments, Andheri West",
+          shopName: "Sunita Enterprises & Retailers",
+          workingHours: { start: "09:00", end: "18:00", timezone: "Asia/Kolkata" },
+          escalationPriority: 1,
+          preferredLanguage: "en-IN",
+          consentAt: new Date().toISOString(),
+          cooldownUntil: null,
+        };
+
+        setVendor(targetVendor);
+
+        // Load saved call history for this vendor from localStorage or fallback to default
+        let loadedHistory: CallRecord[] = [];
+        try {
+          const saved = localStorage.getItem(`call_history_${vendorId}`);
+          if (saved) loadedHistory = JSON.parse(saved);
+        } catch {}
+
+        if (loadedHistory.length > 0) {
+          setCallHistory(loadedHistory);
         } else {
-          // Fallback demo vendor if dynamic ID
-          const fallbackVendor: Contact = {
-            id: vendorId,
-            organizationId: "org-metro-supply",
-            name: "Sunita Sharma",
-            role: "Vendor",
-            phoneE164: "+919820441207",
-            productCategories: ["wholesale", "retail"],
-            region: "Mumbai West",
-            workplaceLocation: "MIDC Industrial Estate, Phase II, Zone 2",
-            livingLocation: "Flat 402, Green Acres Apartments, Andheri West",
-            shopName: "Sunita Enterprises & Retailers",
-            workingHours: { start: "09:00", end: "18:00", timezone: "Asia/Kolkata" },
-            escalationPriority: 1,
-            preferredLanguage: "en-IN",
-            consentAt: new Date().toISOString(),
-            cooldownUntil: null,
-          };
-          setVendor(fallbackVendor);
-          setCallHistory(buildCallHistory(fallbackVendor.name, fallbackVendor.shopName));
+          setCallHistory(buildCallHistory(targetVendor.name, targetVendor.shopName));
         }
       })
       .catch(() => {})
       .finally(() => setLoading(false));
   }, [vendorId]);
 
-  const triggerCall = () => {
+  const triggerCall = async () => {
     if (!vendor) return;
     setCalling(true);
-    setTimeout(() => {
-      setCalling(false);
+
+    try {
+      const res = await apiPost<any>("/api/v1/contacts/call", {
+        contactId: vendor.id,
+        contact: vendor,
+        orderReference: `ORD-${vendor.id.slice(-4).toUpperCase()}`,
+      });
+
+      const extractedTranscript: Turn[] =
+        res.transcript && res.transcript.length > 0
+          ? res.transcript.map((t: any) => ({
+              speaker: t.speaker === "AGENT" ? "AGENT" : "HUMAN",
+              name: t.speaker === "AGENT" ? "CALL-E AI Agent" : `${vendor.name} (Client)`,
+              text: t.text,
+              time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+            }))
+          : [
+              {
+                speaker: "AGENT",
+                name: "CALL-E AI Agent",
+                text: `Live CALL-E call completed with ${vendor.name}.`,
+                time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+              },
+            ];
+
       const newCall: CallRecord = {
         id: `call-${Date.now()}`,
-        orderRef: "ORD-489",
-        date: "Just now (Live Call)",
-        status: "Completed",
-        state: "success",
-        summary: `Live CALL-E call completed with ${vendor.name}. Stock check, item requirements (Oxygen Cylinders), urgency (Standard - Tomorrow Noon), and additional query handled.`,
-        transcript: [
-          {
-            speaker: "AGENT",
-            name: "CALL-E AI Agent",
-            text: `Hello ${vendor.name}, this is the automated operations line from Northgate Wholesale calling regarding your account at ${vendor.shopName || vendor.name}.`,
-            time: "Just now",
-          },
-          {
-            speaker: "AGENT",
-            name: "CALL-E AI Agent",
-            text: `We are conducting our daily inventory check. Could you share your current stock status, and let us know if you require any new items today?`,
-            time: "Just now",
-          },
-          {
-            speaker: "HUMAN",
-            name: `${vendor.name} (Client)`,
-            text: `Hi! Yes, our stock of emergency cylinders is low and we need to order Portable Oxygen Cylinders.`,
-            time: "Just now",
-          },
-          {
-            speaker: "AGENT",
-            name: "CALL-E AI Agent",
-            text: `Got it. How many units of Portable Oxygen Cylinders do you need delivered?`,
-            time: "Just now",
-          },
-          {
-            speaker: "HUMAN",
-            name: `${vendor.name} (Client)`,
-            text: `We need 10 cylinders delivered.`,
-            time: "Just now",
-          },
-          {
-            speaker: "AGENT",
-            name: "CALL-E AI Agent",
-            text: `Understood—10 Portable Oxygen Cylinders. When should these items be delivered? Is this an urgent order or can it take normal delivery time?`,
-            time: "Just now",
-          },
-          {
-            speaker: "HUMAN",
-            name: `${vendor.name} (Client)`,
-            text: `Standard delivery is fine, please deliver tomorrow by noon.`,
-            time: "Just now",
-          },
-          {
-            speaker: "AGENT",
-            name: "CALL-E AI Agent",
-            text: `Noted—standard delivery for tomorrow by noon. Are there any other items to add to the delivery list?`,
-            time: "Just now",
-          },
-          {
-            speaker: "HUMAN",
-            name: `${vendor.name} (Client)`,
-            text: `No, that is all for today.`,
-            time: "Just now",
-          },
-          {
-            speaker: "AGENT",
-            name: "CALL-E AI Agent",
-            text: `Do you have any further queries regarding existing orders, pricing, or available warehouse items?`,
-            time: "Just now",
-          },
-          {
-            speaker: "HUMAN",
-            name: `${vendor.name} (Client)`,
-            text: `No further queries, thank you for checking in!`,
-            time: "Just now",
-          },
-          {
-            speaker: "AGENT",
-            name: "CALL-E AI Agent",
-            text: `Thank you ${vendor.name}! Order ORD-489 has been placed and confirmed for tomorrow noon delivery. Have a great day!`,
-            time: "Just now",
-          },
-        ],
+        orderRef: res.orderId || `ORD-${Date.now().toString().slice(-4)}`,
+        date: `${new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} (Live Call)`,
+        status: res.blockedReason ? "Dispute" : "Completed",
+        state: res.blockedReason ? "warning" : "success",
+        summary: res.blockedReason
+          ? `Call ended: ${res.blockedReason}`
+          : res.structuredResult?.verbatim_commitment ||
+            `Live CALL-E call completed with ${vendor.name}. Stock check and inventory requirements extracted.`,
+        transcript: extractedTranscript,
       };
-      setCallHistory((prev) => [newCall, ...prev]);
+
+      setCallHistory((prev) => {
+        const updated = [newCall, ...prev];
+        try {
+          localStorage.setItem(`call_history_${vendorId}`, JSON.stringify(updated));
+        } catch {}
+        return updated;
+      });
+
       setExpandedCallId(newCall.id);
-    }, 3500);
+    } catch (err: any) {
+      console.error("Live call failed:", err);
+    } finally {
+      setCalling(false);
+    }
   };
 
   const toggleCallExpand = (id: string) => {

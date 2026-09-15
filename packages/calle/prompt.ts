@@ -159,21 +159,20 @@ export function buildWholesaleCoordinationPrompt(
       : `The buyer needs this by ${requiredBySpoken}.`;
 
   return `
-You are placing a business-to-business coordination call on behalf of \
-${ctx.buyer.name} to ${contact.name}, ${contact.role} at ${ctx.seller.name}.
+You are placing a business-to-business inventory coordination call on behalf of \
+${ctx.seller.name} (Wholesale Distributors) to ${contact.name}, ${contact.role} at ${contact.shopName || contact.workplaceLocation || ctx.buyer.name}.
 
 ${rungFraming}
 ${urgencyFraming}
 
 OPEN WITH (say EXACTLY this, and nothing more, before anything else):
-"This is the automated operations line for ${ctx.buyer.name}. \
+"This is the automated operations line for ${ctx.seller.name}. \
 Am I speaking with ${contact.name}?"
 
   → WAIT for their answer. Do not continue until they have answered.
   → Only if they confirm they are ${contact.name}, say:
-    "Thank you. I'm calling about order ${referenceSpoken} for \
-${item.requestedQuantity} ${item.unit} of ${item.description}. Can I confirm \
-the available quantity and dispatch date with you?"
+    "Thank you. I'm calling about order ${referenceSpoken} from ${ctx.seller.name} to check on your current stock status \
+and see what inventory or items you are running low on and need supplied to you."
   → If they say no, say they are someone else, hand you to another person, or
     give any answer you cannot read as "yes, this is ${contact.name}", go to
     SOMEONE ELSE ANSWERS below. Do not state the order reference, the product,

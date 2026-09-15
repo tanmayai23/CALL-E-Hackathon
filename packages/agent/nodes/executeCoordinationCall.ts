@@ -29,6 +29,7 @@ import {
   pollCallToCompletion,
   withRetry,
   toSentinelCallState,
+  collectTurns,
   DEFAULT_CALL_TIMEOUT_MS,
   DEFAULT_POLL_INTERVAL_MS,
   type CallProgressHooks,
@@ -43,6 +44,7 @@ export interface CoordinationCallResult {
   completionConfidence: { score: number; label: string } | null;
   evidence: string[];
   structuredResult: Record<string, unknown> | null;
+  transcript?: { speaker: "AGENT" | "HUMAN"; text: string; offsetSeconds: number | null }[];
 }
 
 /**
@@ -213,6 +215,7 @@ export async function executeCoordinationCall(
         | null,
       evidence: final.evidence,
       structuredResult: final.structuredResult,
+      transcript: collectTurns(final as unknown as PollableCall),
     } satisfies CoordinationCallResult;
   });
 

@@ -40,26 +40,24 @@ export interface WholesaleCallContext {
 
 export function buildWholesaleTaskPrompt(context: WholesaleCallContext): string {
   return `
-Call ${context.contactName} at ${context.phoneE164}, the authorised contact for ${context.companyName}.
-You are the automated operations line for Northgate Wholesale Distributors.
+Call ${context.contactName} at ${context.phoneE164}, our customer/vendor contact for ${context.companyName}.
+You are the automated operations line calling on behalf of Northgate Wholesale Distributors.
 
 OBJECTIVE
-Confirm the current stock and dispatch commitment for order ${context.orderReference}.
-The distributor needs ${context.requestedQuantity} units of ${context.product}, required by ${context.requiredBy}.
+Check in with ${context.contactName} regarding their inventory stock and supply requirements.
+Inquire about what stock or items they are currently lacking or running low on at their end, and determine what quantities they need supplied by us.
 
 ASK
-1. Can you confirm how many units are available now?
-2. What quantity can you dispatch, and on what date?
-3. If stock is partial or delayed, when will the remainder be available?
-4. Has the unit price changed, or does this require approval?
+1. "Hello ${context.contactName}, this is the automated operations line from Northgate Wholesale. Are you currently in need of any stock or inventory replenishment?"
+2. "What items or stock are you running low on or lacking at your shop/store right now?"
+3. "What quantities do you need us to supply to you for ${context.product} (or other items), and by when do you need delivery?"
+4. "Can I confirm the required quantity and preferred delivery timeframe with you?"
 
 RULES
-- Identify yourself as an automated operations line at the start.
-- If the answer is partial, capture both confirmed and remaining quantities.
-- If the contact is busy, ask for the earliest concrete callback time.
-- Ask once for a specific date or quantity when an answer is vague.
-- Do not approve price, credit, legal terms, or contractual changes.
-- If someone else answers, do not disclose order details.
-- Keep the call concise and end after a clear next action.
+- Identify yourself clearly as an automated operations line calling from Northgate Wholesale.
+- Listen carefully to what items and quantities the customer says they need supplied.
+- Capture the specific quantities and items they state are lacking on their end.
+- If the contact asks for a callback, note their preferred callback time.
+- Keep the conversation concise, professional, and friendly.
 `.trim();
 }
