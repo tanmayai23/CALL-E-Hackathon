@@ -61,32 +61,50 @@ const AuthContext = createContext<AuthContextType>({
 });
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<any | null>(null);
-  const [profile, setProfile] = useState<UserProfile | null>(DEFAULT_PROFILE);
+  const [user, setUser] = useState<any | null>(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("sentinel_auth_user");
+      if (saved) {
+        try { return JSON.parse(saved); } catch {}
+      }
+    }
+    return null;
+  });
+
+  const [profile, setProfile] = useState<UserProfile | null>(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("sentinel_user_profile");
+      if (saved) {
+        try { return JSON.parse(saved); } catch {}
+      }
+    }
+    return null;
+  });
+
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Check saved local profile overrides first
+    // Check saved local user session first
+    const savedUser = localStorage.getItem("sentinel_auth_user");
     const savedProfile = localStorage.getItem("sentinel_user_profile");
+    if (savedUser) {
+      try { setUser(JSON.parse(savedUser)); } catch {}
+    }
     if (savedProfile) {
-      try {
-        setProfile(JSON.parse(savedProfile));
-      } catch {}
+      try { setProfile(JSON.parse(savedProfile)); } catch {}
     }
 
     const supabase = getSupabaseClient();
     if (!supabase) {
-      const savedRole = localStorage.getItem("sentinel_user_role") as UserRole;
-      if (savedRole) {
-        setProfile((prev) => (prev ? { ...prev, role: savedRole } : DEFAULT_PROFILE));
-      }
       setLoading(false);
       return;
     }
 
     supabase.auth.getSession().then(({ data: { session } }: any) => {
       if (session?.user) {
-        setUser(session.user);
+        const u = { id: session.user.id, email: session.user.email };
+        setUser(u);
+        localStorage.setItem("sentinel_auth_user", JSON.stringify(u));
         fetchProfile(session.user.id, session.user.email!);
       } else {
         setLoading(false);
@@ -96,10 +114,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (_event: string, session: any) => {
         if (session?.user) {
-          setUser(session.user);
+          const u = { id: session.user.id, email: session.user.email };
+          setUser(u);
+          localStorage.setItem("sentinel_auth_user", JSON.stringify(u));
           fetchProfile(session.user.id, session.user.email!);
-        } else {
+        } else if (_event === "SIGNED_OUT") {
           setUser(null);
+          setProfile(null);
+          localStorage.removeItem("sentinel_auth_user");
+          localStorage.removeItem("sentinel_user_profile");
+          setLoading(false);
+        } else {
           setLoading(false);
         }
       }
@@ -110,7 +135,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   async function fetchProfile(userId: string, email: string) {
     const supabase = getSupabaseClient();
-    if (!supabase) return;
+    const fallbackName = email ? email.split("@")[0] : "User";
+    const derivedProfile: UserProfile = {
+      id: userId,
+      email,
+      fullName: fallbackName.charAt(0).toUpperCase() + fallbackName.slice(1),
+      role: email.toLowerCase().includes("admin") ? "ADMIN" : "DISTRIBUTOR",
+      organizationId: "org-northgate",
+      phone: "+91 9026864854",
+      location: "Mumbai Operations Desk",
+      wholesalerName: `${fallbackName.charAt(0).toUpperCase() + fallbackName.slice(1)} Wholesale Operations`,
+    };
+
+    if (!supabase) {
+      setProfile((prev) => prev || derivedProfile);
+      setLoading(false);
+      return;
+    }
 
     try {
       const { data } = await supabase
@@ -122,20 +163,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (data) {
         const fetched: UserProfile = {
           id: data.id,
-          email: data.email,
-          fullName: data.full_name,
-          role: data.role as UserRole,
-          organizationId: data.organization_id,
-          phone: data.phone,
+          email: data.email || email,
+          fullName: data.full_name || derivedProfile.fullName,
+          role: (data.role as UserRole) || derivedProfile.role,
+          organizationId: data.organization_id || derivedProfile.organizationId,
+          phone: data.phone || derivedProfile.phone,
           age: data.age,
-          location: data.location,
-          wholesalerName: data.wholesaler_name,
+          location: data.location || derivedProfile.location,
+          wholesalerName: data.wholesaler_name || derivedProfile.wholesalerName,
           avatarUrl: data.avatar_url,
         };
         setProfile(fetched);
         localStorage.setItem("sentinel_user_profile", JSON.stringify(fetched));
+      } else {
+        setProfile(derivedProfile);
+        localStorage.setItem("sentinel_user_profile", JSON.stringify(derivedProfile));
       }
     } catch {
+      setProfile((prev) => prev || derivedProfile);
     } finally {
       setLoading(false);
     }
@@ -173,14 +218,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   async function signIn(email: string, pass: string) {
     const supabase = getSupabaseClient();
+    const role: UserRole = email.toLowerCase().includes("admin") ? "ADMIN" : "DISTRIBUTOR";
+    const namePart = email.split("@")[0];
+    const derivedName = namePart.charAt(0).toUpperCase() + namePart.slice(1);
+
     if (!supabase) {
-      const role: UserRole = email.toLowerCase().includes("admin") ? "ADMIN" : "DISTRIBUTOR";
-      setUser({ id: "user-demo", email });
-      setProfile((prev) => ({
-        ...(prev || DEFAULT_PROFILE),
+      const activeUser = { id: `user-${Date.now().toString(36)}`, email };
+      const newProf: UserProfile = {
+        id: activeUser.id,
         email,
+        fullName: derivedName,
         role,
-      }));
+        organizationId: "org-northgate",
+        wholesalerName: `${derivedName} Wholesale Operations`,
+      };
+      setUser(activeUser);
+      setProfile(newProf);
+      localStorage.setItem("sentinel_auth_user", JSON.stringify(activeUser));
+      localStorage.setItem("sentinel_user_profile", JSON.stringify(newProf));
+      localStorage.setItem("sentinel_user_role", role);
       return {};
     }
 
@@ -198,35 +254,41 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         email.includes("northgate");
 
       if (isDemo || error.message.includes("Invalid login credentials")) {
-        const detectedRole: UserRole = email.toLowerCase().includes("admin") ? "ADMIN" : "DISTRIBUTOR";
-        const name = email.toLowerCase().includes("admin") ? "System Admin" : "Ramesh Northgate";
-
         const signUpRes = await supabase.auth.signUp({
           email,
           password: pass,
           options: {
-            data: { full_name: name, role: detectedRole, organization_id: "org-northgate" },
+            data: { full_name: derivedName, role, organization_id: "org-northgate" },
           },
         }).catch(() => null);
 
-        const activeUser = signUpRes?.data?.user || { id: `demo-${Date.now()}`, email };
+        const activeUser = signUpRes?.data?.user ? { id: signUpRes.data.user.id, email } : { id: `user-${Date.now()}`, email };
         setUser(activeUser);
         const updatedProf: UserProfile = {
           id: activeUser.id,
           email,
-          fullName: name,
-          role: detectedRole,
+          fullName: derivedName,
+          role,
           organizationId: "org-northgate",
-          phone: "+91 9876543210",
-          location: "Mumbai West, MIDC Industrial Area",
-          wholesalerName: "Northgate Wholesale Distributors Pvt Ltd",
+          phone: "+91 9026864854",
+          location: "Operations Desk",
+          wholesalerName: `${derivedName} Wholesale Operations`,
         };
         setProfile(updatedProf);
+        localStorage.setItem("sentinel_auth_user", JSON.stringify(activeUser));
         localStorage.setItem("sentinel_user_profile", JSON.stringify(updatedProf));
+        localStorage.setItem("sentinel_user_role", role);
         return {};
       }
 
       return { error: error.message };
+    }
+
+    if (data?.user) {
+      const activeUser = { id: data.user.id, email: data.user.email || email };
+      setUser(activeUser);
+      localStorage.setItem("sentinel_auth_user", JSON.stringify(activeUser));
+      await fetchProfile(data.user.id, activeUser.email);
     }
 
     return {};
@@ -240,90 +302,45 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     organizationId = "org-northgate"
   ) {
     const supabase = getSupabaseClient();
-    if (!supabase) {
-      setUser({ id: "user-new", email });
-      const newProf: UserProfile = {
-        id: "user-new",
-        email,
-        fullName,
-        role,
-        organizationId,
-      };
-      setProfile(newProf);
-      localStorage.setItem("sentinel_user_profile", JSON.stringify(newProf));
-      localStorage.setItem("sentinel_user_role", role);
-      return {};
-    }
-
-    const { data, error } = await supabase.auth.signUp({
+    const activeUser = { id: `user-${Date.now().toString(36)}`, email };
+    const newProf: UserProfile = {
+      id: activeUser.id,
       email,
-      password: pass,
-      options: {
-        data: {
-          full_name: fullName,
-          role,
-          organization_id: organizationId,
-        },
-      },
-    });
+      fullName: fullName || email.split("@")[0],
+      role,
+      organizationId,
+      wholesalerName: `${fullName || email.split("@")[0]} Wholesale Operations`,
+    };
 
-    if (error) {
-      const isRateLimited =
-        error.message.toLowerCase().includes("rate limit") ||
-        error.message.toLowerCase().includes("email rate limit") ||
-        (error as any).status === 429;
+    setUser(activeUser);
+    setProfile(newProf);
+    localStorage.setItem("sentinel_auth_user", JSON.stringify(activeUser));
+    localStorage.setItem("sentinel_user_profile", JSON.stringify(newProf));
+    localStorage.setItem("sentinel_user_role", role);
 
-      if (isRateLimited) {
-        const fallbackId = `user-reg-${Date.now().toString(36)}`;
-        const fallbackUser = { id: fallbackId, email };
-        setUser(fallbackUser);
-
-        const newProf: UserProfile = {
-          id: fallbackId,
+    if (supabase) {
+      try {
+        const { data } = await supabase.auth.signUp({
           email,
-          fullName,
-          role,
-          organizationId,
-        };
-        setProfile(newProf);
-        localStorage.setItem("sentinel_user_profile", JSON.stringify(newProf));
-        localStorage.setItem("sentinel_user_role", role);
+          password: pass,
+          options: {
+            data: { full_name: fullName, role, organization_id: organizationId },
+          },
+        });
 
-        try {
+        if (data?.user) {
           await supabase.from("profiles").upsert({
-            id: fallbackId,
+            id: data.user.id,
             email,
             full_name: fullName,
             role,
             organization_id: organizationId,
+            wholesaler_name: `${fullName} Wholesale Operations`,
           });
-        } catch {}
-
-        return {};
+        }
+      } catch (err) {
+        console.warn("Supabase signUp warning:", err);
       }
-
-      return { error: error.message };
-    }
-
-    if (data.user) {
-      const newProf: UserProfile = {
-        id: data.user.id,
-        email,
-        fullName,
-        role,
-        organizationId,
-      };
-      setProfile(newProf);
-      localStorage.setItem("sentinel_user_profile", JSON.stringify(newProf));
-      localStorage.setItem("sentinel_user_role", role);
-
-      await supabase.from("profiles").upsert({
-        id: data.user.id,
-        email,
-        full_name: fullName,
-        role,
-        organization_id: organizationId,
-      });
     }
 
     return {};
@@ -332,10 +349,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   async function signOut() {
     const supabase = getSupabaseClient();
     if (supabase) {
-      await supabase.auth.signOut();
+      try { await supabase.auth.signOut(); } catch {}
     }
     setUser(null);
-    setProfile(DEFAULT_PROFILE);
+    setProfile(null);
+    localStorage.removeItem("sentinel_auth_user");
     localStorage.removeItem("sentinel_user_profile");
     localStorage.removeItem("sentinel_user_role");
   }

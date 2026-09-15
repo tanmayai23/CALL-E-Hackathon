@@ -104,7 +104,7 @@ export function CommandBar({ killSwitch }: { killSwitch: KillSwitchState }) {
 
       <div className="hidden min-w-0 flex-col lg:flex">
         <span className="truncate text-xs font-semibold leading-tight text-ink">
-          {profile?.wholesalerName || profile?.fullName || BUYER.name}
+          {profile?.wholesalerName || profile?.fullName || user?.email?.split("@")[0] || "Operations Desk"}
         </span>
         <span className="micro leading-tight">
           {profile?.location ? `${profile.location} · Operations` : `Operations · working hours ${WORKING_HOURS.start}–${WORKING_HOURS.end} IST`}
@@ -123,7 +123,9 @@ export function CommandBar({ killSwitch }: { killSwitch: KillSwitchState }) {
           </StateChip>
         )}
 
-        <RoleSelector currentRole={profile?.role} onRoleChange={(r) => switchRole(r)} />
+        {process.env.NODE_ENV === "development" && (
+          <RoleSelector currentRole={profile?.role} onRoleChange={(r) => switchRole(r)} />
+        )}
 
         <span className="hidden h-4 w-px bg-line sm:block" aria-hidden />
 
@@ -168,11 +170,15 @@ export function CommandBar({ killSwitch }: { killSwitch: KillSwitchState }) {
               title="Edit Wholesaler Profile"
             >
               <div className="h-7 w-7 rounded-full bg-lilac/20 text-lilac font-bold text-xs flex items-center justify-center border border-lilac/40 shrink-0">
-                {profile?.fullName?.charAt(0) || "W"}
+                {(profile?.fullName || user?.email || "U").charAt(0).toUpperCase()}
               </div>
               <div className="hidden sm:flex flex-col text-right">
-                <span className="text-xs font-semibold text-ink leading-tight">{profile?.fullName}</span>
-                <span className="micro text-ink-dim leading-tight">{profile?.wholesalerName || profile?.email}</span>
+                <span className="text-xs font-semibold text-ink leading-tight">
+                  {profile?.fullName || user?.email?.split("@")[0]}
+                </span>
+                <span className="micro text-ink-dim leading-tight">
+                  {profile?.wholesalerName || user?.email}
+                </span>
               </div>
             </Link>
             <Button variant="ghost" size="sm" onClick={() => signOut()} title="Sign out">

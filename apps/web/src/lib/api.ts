@@ -9,8 +9,7 @@
  */
 
 export const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "";
-
-export const IS_MOCK = API_BASE === "";
+export const IS_MOCK = process.env.NEXT_PUBLIC_USE_MOCK === "true";
 
 export function apiUrl(path: string): string {
   return `${API_BASE}${path}`;

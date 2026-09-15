@@ -51,28 +51,30 @@ export default function LoginPage() {
           </p>
         </div>
 
-        {/* Quick Demo Fill Buttons */}
-        <div className="space-y-1.5">
-          <span className="text-[11px] font-semibold text-ink-dim uppercase tracking-wider block text-center">Quick Demo Accounts</span>
-          <div className="grid grid-cols-2 gap-2">
-            <button
-              type="button"
-              onClick={() => fillQuickDemo("admin@marketbuddy.ai", "ADMIN")}
-              className="flex items-center justify-center gap-1.5 py-2 px-3 text-xs font-medium rounded-lg border border-amber-500/20 bg-amber-500/10 text-amber-700 hover:bg-amber-500/20 transition-colors cursor-pointer"
-            >
-              <Shield className="h-3.5 w-3.5" />
-              <span>Admin Demo</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => fillQuickDemo("wholesaler@northgate-dist.com", "DISTRIBUTOR")}
-              className="flex items-center justify-center gap-1.5 py-2 px-3 text-xs font-medium rounded-lg border border-blue-500/20 bg-blue-50/50 text-blue-700 hover:bg-blue-50 transition-colors cursor-pointer"
-            >
-              <Building2 className="h-3.5 w-3.5" />
-              <span>Wholesaler Demo</span>
-            </button>
+        {/* Quick Test Fill Buttons (Development Only) */}
+        {process.env.NODE_ENV === "development" && (
+          <div className="space-y-1.5">
+            <span className="text-[11px] font-semibold text-ink-dim uppercase tracking-wider block text-center">Development Test Accounts</span>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => fillQuickDemo("admin@marketbuddy.ai", "ADMIN")}
+                className="flex items-center justify-center gap-1.5 py-2 px-3 text-xs font-medium rounded-lg border border-amber-500/20 bg-amber-500/10 text-amber-700 hover:bg-amber-500/20 transition-colors cursor-pointer"
+              >
+                <Shield className="h-3.5 w-3.5" />
+                <span>Admin Test</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => fillQuickDemo("wholesaler@northgate-dist.com", "DISTRIBUTOR")}
+                className="flex items-center justify-center gap-1.5 py-2 px-3 text-xs font-medium rounded-lg border border-blue-500/20 bg-blue-50/50 text-blue-700 hover:bg-blue-50 transition-colors cursor-pointer"
+              >
+                <Building2 className="h-3.5 w-3.5" />
+                <span>Wholesaler Test</span>
+              </button>
+            </div>
           </div>
-        </div>
+        )}
 
         {error && (
           <div className="flex items-center gap-2 p-3 rounded-lg bg-red-50 text-red-700 border border-red-200 text-xs">

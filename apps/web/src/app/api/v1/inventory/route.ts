@@ -111,16 +111,47 @@ const INVENTORY: InventoryItem[] = [
   },
 ];
 
+import { getSupabaseClient, hasSupabaseConfig } from "@/lib/db/supabase-client";
+
 /** GET /api/v1/inventory — List current stock of the wholesaler */
 export async function GET() {
-  const totalItemsCount = INVENTORY.reduce((sum, item) => sum + item.totalStock, 0);
-  const totalValueINR = INVENTORY.reduce((sum, item) => sum + item.totalStock * item.unitPrice, 0);
-  const lowStockCount = INVENTORY.filter((item) => item.status === "LOW_STOCK").length;
+  let itemsList = INVENTORY;
+  if (hasSupabaseConfig()) {
+    const supabase = getSupabaseClient();
+    if (supabase) {
+      try {
+        const { data, error } = await supabase.from("inventory").select("*");
+        if (!error && data && data.length > 0) {
+          itemsList = data.map((row: any) => ({
+            sku: row.sku,
+            description: row.description,
+            category: row.category,
+            totalStock: row.total_stock,
+            reservedQty: row.reserved_qty,
+            availableQty: row.available_qty,
+            unit: row.unit,
+            unitPrice: Number(row.unit_price),
+            currency: row.currency || "INR",
+            reorderThreshold: row.reorder_threshold,
+            status: row.status,
+            warehouseZone: row.warehouse_zone,
+            lastUpdated: row.last_updated || "Recently",
+          }));
+        }
+      } catch (err) {
+        console.warn("Supabase inventory fetch error:", err);
+      }
+    }
+  }
+
+  const totalItemsCount = itemsList.reduce((sum, item) => sum + item.totalStock, 0);
+  const totalValueINR = itemsList.reduce((sum, item) => sum + item.totalStock * item.unitPrice, 0);
+  const lowStockCount = itemsList.filter((item) => item.status === "LOW_STOCK").length;
 
   return NextResponse.json({
-    items: INVENTORY,
+    items: itemsList,
     summary: {
-      totalSkus: INVENTORY.length,
+      totalSkus: itemsList.length,
       totalUnits: totalItemsCount,
       totalValueINR,
       lowStockAlerts: lowStockCount,
@@ -134,21 +165,47 @@ export async function POST(req: Request) {
     const { sku, delta, newStock } = await req.json();
     const item = INVENTORY.find((i) => i.sku === sku);
 
-    if (!item) {
-      return NextResponse.json({ error: "SKU not found" }, { status: 404 });
+    let updatedStock = 0;
+    if (item) {
+      if (typeof newStock === "number") {
+        item.totalStock = Math.max(0, newStock);
+      } else if (typeof delta === "number") {
+        item.totalStock = Math.max(0, item.totalStock + delta);
+      }
+      item.availableQty = Math.max(0, item.totalStock - item.reservedQty);
+      item.status = item.availableQty <= item.reorderThreshold ? "LOW_STOCK" : "IN_STOCK";
+      item.lastUpdated = "Just now";
+      updatedStock = item.totalStock;
     }
 
-    if (typeof newStock === "number") {
-      item.totalStock = Math.max(0, newStock);
-    } else if (typeof delta === "number") {
-      item.totalStock = Math.max(0, item.totalStock + delta);
+    if (hasSupabaseConfig()) {
+      const supabase = getSupabaseClient();
+      if (supabase) {
+        try {
+          const { data: dbItem } = await supabase.from("inventory").select("*").eq("sku", sku).single();
+          if (dbItem) {
+            const currentTotal = typeof newStock === "number" ? newStock : dbItem.total_stock + (delta || 0);
+            const totalStock = Math.max(0, currentTotal);
+            const availableQty = Math.max(0, totalStock - dbItem.reserved_qty);
+            const status = availableQty <= dbItem.reorder_threshold ? "LOW_STOCK" : "IN_STOCK";
+
+            await supabase
+              .from("inventory")
+              .update({
+                total_stock: totalStock,
+                available_qty: availableQty,
+                status,
+                last_updated: "Just now",
+              })
+              .eq("sku", sku);
+          }
+        } catch (err) {
+          console.warn("Supabase inventory update error:", err);
+        }
+      }
     }
 
-    item.availableQty = Math.max(0, item.totalStock - item.reservedQty);
-    item.status = item.availableQty <= item.reorderThreshold ? "LOW_STOCK" : "IN_STOCK";
-    item.lastUpdated = "Just now";
-
-    return NextResponse.json({ success: true, item });
+    return NextResponse.json({ success: true, item: item || { sku, totalStock: updatedStock } });
   } catch (err: unknown) {
     return NextResponse.json({ error: "Could not update stock" }, { status: 500 });
   }

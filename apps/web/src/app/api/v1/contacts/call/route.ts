@@ -21,6 +21,7 @@ import { createAgentRun } from "@/lib/mock/store";
 import { isKillSwitchEngaged } from "@/lib/db/orders-repository";
 import { CONTACTS, PRODUCT, SELLER, WORKING_HOURS } from "@/lib/mock/directory";
 import { findConsentedContact, cleanToE164 } from "@/lib/contacts/roster";
+import { getSupabaseClient, hasSupabaseConfig } from "@/lib/db/supabase-client";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -158,6 +159,37 @@ export async function POST(request: Request) {
 
     const structuredResult = finalState.structuredResults.at(-1) ?? null;
     const confidence = finalState.confidenceHistory.at(-1) ?? null;
+
+    if (hasSupabaseConfig()) {
+      const supabase = getSupabaseClient();
+      if (supabase) {
+        try {
+          await supabase.from("orders").upsert({
+            id: order.id,
+            reference: order.reference,
+            trace_id: order.traceId,
+            buyer_id: order.buyer.id,
+            seller_id: order.seller.id,
+            status: finalState.finalOutcome || "CONFIRMED",
+            urgency: order.urgency,
+            required_by: order.requiredBy,
+            outcome: (structuredResult as any)?.verbatim_commitment || "Live CALL-E inventory call completed",
+            created_at: order.createdAt,
+          });
+
+          await supabase.from("calls").insert({
+            id: `call_${order.id}_${Date.now().toString(36)}`,
+            order_id: order.id,
+            contact_id: contact.id,
+            status: "completed",
+            structured_result: structuredResult || {},
+            created_at: new Date().toISOString(),
+          });
+        } catch (err) {
+          console.warn("[call/route] Supabase call persistence error:", err);
+        }
+      }
+    }
 
     return NextResponse.json({
       orderId: order.id,
